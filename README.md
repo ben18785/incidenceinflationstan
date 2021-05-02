@@ -4,6 +4,8 @@
 # incidenceinflation
 
 <!-- badges: start -->
+
+[![R-CMD-check](https://github.com/ben18785/incidenceinflation/workflows/R-CMD-check/badge.svg)](https://github.com/ben18785/incidenceinflation/actions)
 <!-- badges: end -->
 
 The goal of incidenceinflation is to estimate R0 and true incidence
