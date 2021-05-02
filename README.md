@@ -6,6 +6,8 @@
 <!-- badges: start -->
 
 [![R-CMD-check](https://github.com/ben18785/incidenceinflation/workflows/R-CMD-check/badge.svg)](https://github.com/ben18785/incidenceinflation/actions)
+
+[![codecov](https://codecov.io/gh/ben18785/incidenceinflation/branch/master/graph/badge.svg?token=61D5K98II1)](https://codecov.io/gh/ben18785/incidenceinflation)
 <!-- badges: end -->
 
 The goal of incidenceinflation is to estimate R0 and true incidence
