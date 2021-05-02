@@ -15,7 +15,7 @@ given reporting delays.
 
 ## Installation
 
-You can install the released version of incidenceinflation from
+You can install the released version of `incidenceinflation` from
 [CRAN](https://CRAN.R-project.org) with:
 
 ``` r
