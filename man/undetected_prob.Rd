@@ -4,22 +4,24 @@
 \alias{undetected_prob}
 \title{Probability case remains undetected over time}
 \usage{
-undetected_prob(t1, t0, delay_mean, delay_sd)
+undetected_prob(t_1, t_onset, delay_parameters)
 }
 \arguments{
-\item{t1}{time subsequent to time when case originates, t1>=t0}
+\item{t_1}{observation time subsequent to time when case originates: t1>=t0}
 
-\item{t0}{time when case originates}
+\item{t_onset}{time when case originates}
 
-\item{delay_mean}{mean of gamma distribution governing reporting delay distribution}
-
-\item{delay_sd}{std. dev. of gamma distribution governing reporting delay distribution}
+\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+characterising the reporting delay distribution}
 }
 \value{
 a probability
 }
 \description{
 This is effectively a survival function, which shows the
-probability that an actual case originating on day t0
-remains unreported at t1.
+probability that an actual case originating on day t_onset
+remains unreported at t_1.
+}
+\examples{
+incidenceinflation:::undetected_prob(2, 1, list(mean=10, sd=5))
 }

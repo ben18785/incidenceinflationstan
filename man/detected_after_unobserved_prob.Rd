@@ -5,26 +5,25 @@
 \title{Probability a case is detected by a later time given it was unobserved
 earlier}
 \usage{
-detected_after_unobserved_prob(d2, d1, d0, delay_mean, delay_sd)
+detected_after_unobserved_prob(day_2, day_1, day_onset, delay_parameters)
 }
 \arguments{
-\item{d2}{day of last observation d2 > d1 >= d0}
+\item{day_2}{day of last observation: day_2 > day_1 >= day_onset}
 
-\item{d1}{day of first observation d1 >= d0}
+\item{day_1}{day of first observation: day_1 >= day_onset}
 
-\item{d0}{day when case originates}
+\item{day_onset}{day when case originates}
 
-\item{delay_mean}{mean of gamma distribution governing reporting delay distribution}
-
-\item{delay_sd}{std. dev. of gamma distribution governing reporting delay distribution}
+\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+characterising the reporting delay distribution}
 }
 \value{
 a probability
 }
 \description{
-This is the probability that a case originating on day d0 is detected between
-days d1 and d2 given that it was unobserved on day d1. This probability is
-calculated using the survival functions (which indicate the probability a
-case remains undetected by a certain time):
-\deqn{prob(detect) = \frac{S(d1|d0) - S(d2|d0)}{S(d1|d0)}}
+This is the probability that a case originating on day day_onset is detected
+between days day_1 and day_2 given that it was unobserved on day day_1. This
+probability is calculated using the survival functions (which indicate the
+probability a case remains undetected by a certain time):
+\deqn{prob(detect) = \frac{S(day_1|day_onset) - S(day_2|day_onset)}{S(day_1|day_onset)}}
 }
