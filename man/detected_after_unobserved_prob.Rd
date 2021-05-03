@@ -5,7 +5,7 @@
 \title{Probability a case is detected by a later time given it was unobserved
 earlier}
 \usage{
-detected_after_unobserved_prob(day_2, day_1, day_onset, delay_parameters)
+detected_after_unobserved_prob(day_2, day_1, day_onset, reporting_parameters)
 }
 \arguments{
 \item{day_2}{day of last observation: day_2 > day_1 >= day_onset}
@@ -14,7 +14,7 @@ detected_after_unobserved_prob(day_2, day_1, day_onset, delay_parameters)
 
 \item{day_onset}{day when case originates}
 
-\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
 }
 \value{

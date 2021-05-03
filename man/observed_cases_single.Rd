@@ -10,7 +10,7 @@ observed_cases_single(
   day_2,
   day_1,
   day_onset,
-  delay_parameters
+  reporting_parameters
 )
 }
 \arguments{
@@ -25,7 +25,7 @@ day_1}
 
 \item{day_onset}{day when case originates}
 
-\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
 }
 \value{

@@ -4,14 +4,14 @@
 \alias{undetected_prob}
 \title{Probability case remains undetected over time}
 \usage{
-undetected_prob(t_1, t_onset, delay_parameters)
+undetected_prob(t_1, t_onset, reporting_parameters)
 }
 \arguments{
 \item{t_1}{observation time subsequent to time when case originates: t1>=t0}
 
 \item{t_onset}{time when case originates}
 
-\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
 }
 \value{

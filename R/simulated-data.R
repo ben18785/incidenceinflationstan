@@ -6,17 +6,17 @@
 #'
 #' @param t_1 observation time subsequent to time when case originates: t1>=t0
 #' @param t_onset time when case originates
-#' @param delay_parameters named list of 'mean' and 'sd' of gamma distribution
+#' @param reporting_parameters named list of 'mean' and 'sd' of gamma distribution
 #' characterising the reporting delay distribution
 #'
 #' @return a probability
 #' @examples
 #' incidenceinflation:::undetected_prob(2, 1, list(mean=10, sd=5))
-undetected_prob <- function(t_1, t_onset, delay_parameters){
+undetected_prob <- function(t_1, t_onset, reporting_parameters){
   if(t_1 < t_onset)
     stop("t_1 must equal or exceed t_onset")
-  delay_mean <- delay_parameters$mean
-  delay_sd <- delay_parameters$sd
+  delay_mean <- reporting_parameters$mean
+  delay_sd <- reporting_parameters$sd
   1 - stats::pgamma(t_1 - t_onset, delay_mean^2 / delay_sd^2,
                     delay_mean / delay_sd^2)
 }
@@ -37,12 +37,12 @@ undetected_prob <- function(t_1, t_onset, delay_parameters){
 #'
 #' @return a probability
 detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
-                                           delay_parameters){
+                                           reporting_parameters){
   if(day_2 < day_1)
     stop("second observation date must be at same time or after first")
-  (undetected_prob(day_1 + 0.5, day_onset, delay_parameters) -
-   undetected_prob(day_2 + 0.5, day_onset, delay_parameters)) /
-  undetected_prob(day_1 + 0.5, day_onset, delay_parameters)
+  (undetected_prob(day_1 + 0.5, day_onset, reporting_parameters) -
+   undetected_prob(day_2 + 0.5, day_onset, reporting_parameters)) /
+  undetected_prob(day_1 + 0.5, day_onset, reporting_parameters)
 }
 
 #' Cases arising on a given day which are reported between two subsequent days
@@ -61,13 +61,17 @@ detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
 #'
 #' @return a count representing number of cases reported between day_1 and day_2
 observed_cases_single <- function(I_observed, I_true, day_2, day_1, day_onset,
-                                  delay_parameters){
+                                  reporting_parameters){
   if(I_true < I_observed)
     stop("true case count must exceed reported")
   I_remaining <- I_true - I_observed
-  stats::rbinom(1, I_remaining,
-                detected_after_unobserved_prob(day_2, day_1, day_onset,
-                                               delay_parameters))
+  if(I_remaining == 0)
+    cases <- 0
+  else
+    cases <- stats::rbinom(1, I_remaining,
+      detected_after_unobserved_prob(day_2, day_1, day_onset,
+                                     reporting_parameters))
+  cases
 }
 
 
@@ -79,14 +83,13 @@ observed_cases_single <- function(I_observed, I_true, day_2, day_1, day_onset,
 #'
 #' @return a vector of reported case counts of same length as days_reporting
 observed_cases_trajectory <- function(I_true, days_reporting, day_onset,
-                                      delay_parameters){
+                                      reporting_parameters){
 
   I_observed <- vector(length = length(days_reporting))
-  I_observed[1] <- 0
   for(i in 1:length(days_reporting)){
     if(i == 1) {
       I_previous_obs <- 0
-      day_previous_report <- 0
+      day_previous_report <- day_onset
     } else {
       I_previous_obs <- I_observed[i - 1]
       day_previous_report <- days_reporting[i - 1]
@@ -95,7 +98,7 @@ observed_cases_trajectory <- function(I_true, days_reporting, day_onset,
                                        days_reporting[i],
                                        day_previous_report,
                                        day_onset,
-                                       delay_parameters)
+                                       reporting_parameters)
     I_observed[i] <- I_previous_obs + new_cases
   }
   I_observed
@@ -209,4 +212,42 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
   I_true[-(1:initial_length)]
 }
 
+#' Generate reported case trajectories for each day when cases appear
+#'
+#' @param I_true a vector of true cases originating each day
+#' @inheritParams undetected_prob
+#' @param days_max_follow_up max days at which to simulate reporting case
+#' trajectory
+#'
+#' @return a tibble with observed case trajectories for each time of onset
+#' @export
+#' @importFrom magrittr "%>%"
+#' @examples
+#' library(incidenceinflation)
+#' observed_cases(stats::rpois(5, 5), list(mean=5, sd=1))
+observed_cases <- function(I_true, reporting_parameters,
+                           days_max_follow_up=30){
+  d_max <- length(I_true)
+  for(t in 1:(d_max - 1)){
+    a_max <- min(c(d_max, t + days_max_follow_up))
+    obs_time <- seq(t, a_max, 1)
+    cases_obs_trajec <- observed_cases_trajectory(
+      I_true=I_true[t],
+      days_reporting=obs_time,
+      day_onset=t,
+      reporting_parameters)
 
+    # stack into data frame containing identifying info
+    I_obs_single_onset <- dplyr::tibble(
+      time_onset=rep(t, length(cases_obs_trajec)),
+      time_reporting=obs_time,
+      cases_reported=cases_obs_trajec,
+      cases_true=I_true[t])
+    if(t == 1)
+      cases_obs <- I_obs_single_onset
+    else
+      cases_obs <- cases_obs %>%
+        dplyr::bind_rows(I_obs_single_onset)
+  }
+  cases_obs
+}

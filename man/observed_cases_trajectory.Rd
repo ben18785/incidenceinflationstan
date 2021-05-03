@@ -5,7 +5,12 @@
 \title{Generate trajectory of reported cases for a given count originating on a
 particular day}
 \usage{
-observed_cases_trajectory(I_true, days_reporting, day_onset, delay_parameters)
+observed_cases_trajectory(
+  I_true,
+  days_reporting,
+  day_onset,
+  reporting_parameters
+)
 }
 \arguments{
 \item{I_true}{true case count originating on day_onset}
@@ -14,7 +19,7 @@ observed_cases_trajectory(I_true, days_reporting, day_onset, delay_parameters)
 
 \item{day_onset}{day when case originates}
 
-\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
 }
 \value{

@@ -65,11 +65,11 @@ test_that("observed_cases_trajectory produces trajectories with given
           characteristics", {
   days_reporting <- seq(1, 10, 1)
   true_cases <- 30
-  delay_parameters <- list(mean=1, sd=1)
+  reporting_parameters <- list(mean=1, sd=1)
   day_onset <- 0
   reported_cases <- observed_cases_trajectory(true_cases, days_reporting,
                                               day_onset,
-                                              delay_parameters)
+                                              reporting_parameters)
   expect_equal(length(reported_cases), length(days_reporting))
 
   nreps <- 20
@@ -77,7 +77,7 @@ test_that("observed_cases_trajectory produces trajectories with given
   count_max <- 0
   for(i in 1:nreps) {
     cases <- observed_cases_trajectory(true_cases, days_reporting, day_onset,
-                                       delay_parameters)
+                                       reporting_parameters)
     count_increasing <- count_increasing + dplyr::if_else(
       sum(diff(cases) < 0) > 0, 1, 0)
     count_max <- count_max + dplyr::if_else(max(cases) > true_cases, 1, 0)
@@ -89,21 +89,21 @@ test_that("observed_cases_trajectory produces trajectories with given
 test_that("observed_cases_trajectory increases faster with shorter delay", {
   days_reporting <- seq(1, 10, 1)
   true_cases <- 30
-  delay_parameters_fast <- list(mean=1, sd=1)
-  delay_parameters_slow <- list(mean=40, sd=1)
+  reporting_parameters_fast <- list(mean=1, sd=1)
+  reporting_parameters_slow <- list(mean=40, sd=1)
   day_onset <- 0
 
   reported_cases_fast <- observed_cases_trajectory(
-    true_cases, days_reporting, day_onset, delay_parameters_fast)
+    true_cases, days_reporting, day_onset, reporting_parameters_fast)
   reported_cases_slow <- observed_cases_trajectory(
-    true_cases, days_reporting, day_onset, delay_parameters_slow)
+    true_cases, days_reporting, day_onset, reporting_parameters_slow)
   expect_true(max(reported_cases_fast) > max(reported_cases_slow))
 })
 
 test_that("gamma_discrete_pmf sums near to 1", {
   x <- seq(0, 10000, 1)
-  delay_parameters <- list(mean=1, sd=1)
-  vals <- purrr::map_dbl(x, ~gamma_discrete_pmf(., delay_parameters))
+  reporting_parameters <- list(mean=1, sd=1)
+  vals <- purrr::map_dbl(x, ~gamma_discrete_pmf(., reporting_parameters))
   expect_true(1 - sum(vals) < 0.01)
 })
 

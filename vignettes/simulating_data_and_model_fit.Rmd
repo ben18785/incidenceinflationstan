@@ -49,3 +49,16 @@ tibble(d=1:days_total,
   geom_line(aes(y=Rt * 10), colour="orange") +
   scale_y_continuous(sec.axis = sec_axis(~./10, name = "Rt"))
 ```
+In our model, we assume that cases arising on a given day aren't necessarily observed until some time in the future: then we suppose those cases are summised to have originated on the correct day. In other words, there are imperfections in case reporting meaning that cases may not be uncovered until much after they arise.
+
+We now use the true case series generated previous to simulate observed case trajectories: there is a trajectory for each onset day.
+```{r}
+# reporting delay distribution (assumed gamma)
+reporting_delay <- list(mean=10, sd=3)
+
+observed_cases(cases, reporting_delay) %>% 
+  ggplot(aes(x=time_reporting, y=cases_reported,
+             group=as.factor(time_onset))) +
+  geom_line()
+```
+
