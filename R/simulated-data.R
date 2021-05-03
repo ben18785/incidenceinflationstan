@@ -101,4 +101,16 @@ observed_cases_trajectory <- function(I_true, days_reporting, day_onset,
   I_observed
 }
 
-
+#' Discrete gamma probability mass function
+#'
+#' @param day day to evaluate pmf
+#' @inheritParams undetected_prob
+#'
+#' @return a probability
+gamma_discrete_pmf <- function(day, delay_parameters){
+  delay_mean <- delay_parameters$mean
+  delay_sd <- delay_parameters$sd
+  a <- delay_mean^2 / delay_sd^2
+  b <- delay_mean / delay_sd^2
+  stats::pgamma(day + 0.5, a, b) - stats::pgamma(day - 0.5, a, b)
+}
