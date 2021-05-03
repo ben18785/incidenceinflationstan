@@ -1,0 +1,51 @@
+---
+title: "simulating_data_and_model_fit"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{simulating_data_and_model_fit}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(incidenceinflation)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+```
+
+We first generate a true case series using a negative binomial renewal process.
+Here, we assume a time-varying Rt
+```{r}
+days_total <- 100
+
+# allow Rt to vary over time and construct interpolation function
+v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+# serial interval distribution parameters (assumed gamma)
+s_params <- list(mean=5, sd=3)
+
+# negative binomial over-dispersion parameter
+kappa <- 2
+
+# generate series
+cases <- true_cases(days_total, Rt_function, kappa, s_params)
+
+# plot series
+tibble(d=1:days_total,
+       cases=cases,
+       Rt=v_Rt) %>%
+  ggplot(aes(x=d)) +
+  geom_point(aes(y=cases)) +
+  geom_line(aes(y=cases)) +
+  geom_line(aes(y=Rt * 10), colour="orange") +
+  scale_y_continuous(sec.axis = sec_axis(~./10, name = "Rt"))
+```

@@ -133,3 +133,26 @@ test_that("true_cases_single throws an error if weights not right length", {
   cases_history <- rep(1, 41)
   expect_error(true_cases_single(0.1, 1000, cases_history, weights))
 })
+
+test_that("true_cases returns series of correct characteristics", {
+  days_total <- 100
+  v_R0 <- c(rep(1.3, 25), rep(1, 25), rep(2, 50))
+  kappa <- 2
+  R0_function <- stats::approxfun(1:days_total, v_R0)
+  s_params <- list(mean=5, sd=1)
+  cases <- true_cases(days_total, R0_function, kappa, s_params)
+  expect_equal(length(cases), days_total)
+
+  # high R0 values
+  v_R0 <- c(rep(2, 25), rep(3, 25), rep(1, 50))
+  R0_function_1 <- stats::approxfun(1:days_total, v_R0)
+  cases_high <- true_cases(days_total, R0_function_1, kappa, s_params)
+  expect_true(sum(cases_high) > sum(cases))
+
+  # low initial seeds
+  cases_high_seed <- true_cases(days_total, R0_function, kappa, s_params,
+                               initial_parameters=list(mean=5, length=20))
+  cases_low_seed <- true_cases(days_total, R0_function, kappa, s_params,
+                               initial_parameters=list(mean=0.1, length=2))
+  expect_true(sum(cases_high_seed) > sum(cases_low_seed))
+})

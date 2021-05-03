@@ -4,13 +4,13 @@
 \alias{gamma_discrete_pmf}
 \title{Discrete gamma probability mass function}
 \usage{
-gamma_discrete_pmf(day, delay_parameters)
+gamma_discrete_pmf(day, serial_parameters)
 }
 \arguments{
 \item{day}{day to evaluate pmf}
 
-\item{delay_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
+characterising the serial interval distribution}
 }
 \value{
 a probability
