@@ -136,7 +136,7 @@ test_that("true_cases_single throws an error if weights not right length", {
 
 test_that("true_cases returns series of correct characteristics", {
   days_total <- 100
-  v_R0 <- c(rep(1.3, 25), rep(1, 25), rep(2, 50))
+  v_R0 <- c(rep(1.3, 25), rep(1, 25), rep(1, 50))
   kappa <- 2
   R0_function <- stats::approxfun(1:days_total, v_R0)
   s_params <- list(mean=5, sd=1)
@@ -144,7 +144,7 @@ test_that("true_cases returns series of correct characteristics", {
   expect_equal(length(cases), days_total)
 
   # high R0 values
-  v_R0 <- c(rep(2, 25), rep(3, 25), rep(1, 50))
+  v_R0 <- c(rep(3, 25), rep(3, 25), rep(2, 50))
   R0_function_1 <- stats::approxfun(1:days_total, v_R0)
   cases_high <- true_cases(days_total, R0_function_1, kappa, s_params)
   expect_true(sum(cases_high) > sum(cases))

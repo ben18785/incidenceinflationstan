@@ -208,3 +208,5 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
   }
   I_true[-(1:initial_length)]
 }
+
+
