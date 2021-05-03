@@ -115,3 +115,21 @@ test_that("gamma_discrete_pmf peaks where it should", {
   expect_true(gamma_discrete_pmf(5, d_params) <
                 gamma_discrete_pmf(10, d_params))
 })
+
+test_that("true_cases_single returns sensible values", {
+  days <- seq(1, 40, 1)
+  d_params <- list(mean=5, sd=1)
+  weights <- purrr::map_dbl(days, ~gamma_discrete_pmf(., d_params))
+  cases_history <- rep(1, 40)
+  case_1 <- true_cases_single(0.1, 1000, cases_history, weights)
+  case_2 <- true_cases_single(5, 1000, cases_history, weights)
+  expect_true(case_2 > case_1)
+})
+
+test_that("true_cases_single throws an error if weights not right length", {
+  days <- seq(1, 40, 1)
+  d_params <- list(mean=5, sd=1)
+  weights <- purrr::map_dbl(days, ~gamma_discrete_pmf(., d_params))
+  cases_history <- rep(1, 41)
+  expect_error(true_cases_single(0.1, 1000, cases_history, weights))
+})
