@@ -19,6 +19,7 @@ library(incidenceinflation)
 library(ggplot2)
 library(magrittr)
 library(dplyr)
+library(tidyr)
 ```
 
 We first generate a true case series using a negative binomial renewal process.
@@ -56,7 +57,22 @@ We now use the true case series generated previous to simulate observed case tra
 # reporting delay distribution (assumed gamma)
 reporting_delay <- list(mean=10, sd=3)
 
-observed_cases(cases, reporting_delay) %>% 
+df <- observed_cases(cases, reporting_delay)
+glimpse(df)
+```
+
+For example, consider those cases arising on day 10. We can plot the number of reported cases which arised on that day subsequently. Over time, reported cases tends to true case counts as move cases arising on day 10 are retroactively uncovered.
+```{r}
+df %>% 
+  filter(time_onset == 10) %>% 
+  pivot_longer(cols=c("cases_reported", "cases_true")) %>% 
+  ggplot(aes(x=time_reporting, y=value, colour=name)) +
+  geom_line() +
+  scale_color_brewer("Cases", palette = "Dark2")
+```
+Now plotting the same but for each onset day, we obtain a series of trajectories for reported cases.
+```{r}
+df %>% 
   ggplot(aes(x=time_reporting, y=cases_reported,
              group=as.factor(time_onset))) +
   geom_line()

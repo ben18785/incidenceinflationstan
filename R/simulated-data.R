@@ -228,7 +228,7 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
 observed_cases <- function(I_true, reporting_parameters,
                            days_max_follow_up=30){
   d_max <- length(I_true)
-  for(t in 1:(d_max - 1)){
+  for(t in 1:d_max){
     a_max <- min(c(d_max, t + days_max_follow_up))
     obs_time <- seq(t, a_max, 1)
     cases_obs_trajec <- observed_cases_trajectory(

@@ -156,3 +156,28 @@ test_that("true_cases returns series of correct characteristics", {
                                initial_parameters=list(mean=0.1, length=2))
   expect_true(sum(cases_high_seed) > sum(cases_low_seed))
 })
+
+test_that("observed_cases produces output of correct form", {
+  days_total <- 100
+
+  # allow Rt to vary over time and construct interpolation function
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+  # serial interval distribution parameters (assumed gamma)
+  s_params <- list(mean=5, sd=3)
+
+  # negative binomial over-dispersion parameter
+  kappa <- 2
+
+  # generate series
+  cases <- true_cases(days_total, Rt_function, kappa, s_params)
+
+  # generate reporting df
+  reporting_delay <- list(mean=10, sd=3)
+  df <- observed_cases(cases, reporting_delay)
+  expect_equal(dplyr::n_distinct(df$time_onset), days_total)
+  expect_equal(max(df$time_reporting), days_total)
+  expect_equal(min(df$time_reporting), 1)
+  expect_equal(mean(df$cases_reported <= df$cases_true), 1)
+})
