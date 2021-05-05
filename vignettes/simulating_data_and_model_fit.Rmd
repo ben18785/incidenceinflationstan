@@ -66,14 +66,14 @@ For example, consider those cases arising on day 10. We can plot the number of r
 df %>% 
   filter(time_onset == 10) %>% 
   pivot_longer(cols=c("cases_reported", "cases_true")) %>% 
-  ggplot(aes(x=time_reporting, y=value, colour=name)) +
+  ggplot(aes(x=time_reported, y=value, colour=name)) +
   geom_line() +
   scale_color_brewer("Cases", palette = "Dark2")
 ```
 Now plotting the same but for each onset day, we obtain a series of trajectories for reported cases.
 ```{r}
 df %>% 
-  ggplot(aes(x=time_reporting, y=cases_reported,
+  ggplot(aes(x=time_reported, y=cases_reported,
              group=as.factor(time_onset))) +
   geom_line()
 ```

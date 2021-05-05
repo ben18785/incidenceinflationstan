@@ -240,7 +240,7 @@ observed_cases <- function(I_true, reporting_parameters,
     # stack into data frame containing identifying info
     I_obs_single_onset <- dplyr::tibble(
       time_onset=rep(t, length(cases_obs_trajec)),
-      time_reporting=obs_time,
+      time_reported=obs_time,
       cases_reported=cases_obs_trajec,
       cases_true=I_true[t])
     if(t == 1)
@@ -250,4 +250,48 @@ observed_cases <- function(I_true, reporting_parameters,
         dplyr::bind_rows(I_obs_single_onset)
   }
   cases_obs
+}
+
+#' Thins cases for a single onset time
+#'
+#' Only those data points around where the case count changes contain
+#' information. This method searches and keeps only those data points.
+#'
+#' @param case_obs_single a tibble produced by observed_cases but subsetted to
+#' a single onset time
+#'
+#' @return a thinned tibble
+thin_single_series <- function(case_obs_single) {
+  if(dplyr::n_distinct(case_obs_single$time_onset) > 1)
+    stop("Only single onset time allowed.")
+  changepoints <- which(diff(case_obs_single$cases_reported) > 0)
+  postchangepoints <- changepoints + 1
+  num_points <- nrow(case_obs_single)
+  interesting_points <- sort(unique(c(1, postchangepoints, changepoints,
+                                      num_points)))
+  case_obs_single[interesting_points, ]
+}
+
+#' Thins cases
+#'
+#' Only those data points around where the case count changes contain
+#' information. This method searches and keeps only those data points.
+#'
+#' @param case_obs a tibble produced by observed_cases
+#'
+#' @return a thinned tibble
+#' @importFrom magrittr "%>%"
+thin_series <- function(case_obs) {
+  onset_times <- unique(case_obs$time_onset)
+  for(i in seq_along(onset_times)) {
+    single_df <- case_obs %>%
+      dplyr::filter(case_obs$time_onset == onset_times[i])
+    thinned_single_df <- thin_single_series(single_df)
+    if(i == 1)
+      thinned_df <- thinned_single_df
+    else
+      thinned_df <- thinned_df %>%
+        dplyr::bind_rows(thinned_single_df)
+  }
+  thinned_df
 }
