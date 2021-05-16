@@ -6,14 +6,14 @@
 particular day}
 \usage{
 observed_cases_trajectory(
-  I_true,
+  cases_true,
   days_reporting,
   day_onset,
   reporting_parameters
 )
 }
 \arguments{
-\item{I_true}{true case count originating on day_onset}
+\item{cases_true}{true case count originating on day_onset}
 
 \item{days_reporting}{a vector of days on which cases were counted}
 

@@ -5,8 +5,8 @@
 \title{Cases arising on a given day which are reported between two subsequent days}
 \usage{
 observed_cases_single(
-  I_observed,
-  I_true,
+  cases_observed,
+  cases_true,
   day_2,
   day_1,
   day_onset,
@@ -14,10 +14,10 @@ observed_cases_single(
 )
 }
 \arguments{
-\item{I_observed}{observed case count for cases originating on day_onset on
+\item{cases_observed}{observed case count for cases originating on day_onset on
 day_1}
 
-\item{I_true}{true case count originating on day_onset}
+\item{cases_true}{true case count originating on day_onset}
 
 \item{day_2}{day of last observation: day_2 > day_1 >= day_onset}
 
@@ -34,8 +34,8 @@ a count representing number of cases reported between day_1 and day_2
 \description{
 The number of cases originating on day_onset which are subsequently reported
 between day_1 and day_2 is modelled as a binomial distribution:
-\deqn{I_reported\sim binomial(I_true-I_observed, p_detect)}
-where I_observed is the number of cases originating on day_onset reported on
+\deqn{cases_reported\sim binomial(cases_true-cases_observed, p_detect)}
+where cases_observed is the number of cases originating on day_onset reported on
 day_1; p_detect is the probability a case was undetected on day_1 but
 is detected by day_2.
 }

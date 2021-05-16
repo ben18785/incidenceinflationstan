@@ -24,7 +24,7 @@ period)}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{initial_parameters}{a named list of 'mean' and 'initial_length'
+\item{initial_parameters}{a named list of 'mean' and 'length'
 which is used to generate seed cases by sampling from a negative binomial
 distribution}
 

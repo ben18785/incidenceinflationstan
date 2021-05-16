@@ -1,5 +1,5 @@
 ---
-title: "simulating_data_and_model_fit"
+title: "Simulating data and fitting a model"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{simulating_data_and_model_fit}
@@ -23,7 +23,7 @@ library(tidyr)
 ```
 
 We first generate a true case series using a negative binomial renewal process.
-Here, we assume a time-varying Rt
+Here, we assume a time-varying Rt.
 ```{r}
 days_total <- 100
 
@@ -35,10 +35,11 @@ Rt_function <- stats::approxfun(1:days_total, v_Rt)
 s_params <- list(mean=5, sd=3)
 
 # negative binomial over-dispersion parameter
-kappa <- 2
+kappa <- 10
 
 # generate series
-cases <- true_cases(days_total, Rt_function, kappa, s_params)
+cases <- true_cases(days_total, Rt_function, kappa, s_params,
+                    initial_parameters=list(mean=30, length=30))
 
 # plot series
 tibble(d=1:days_total,
@@ -47,17 +48,17 @@ tibble(d=1:days_total,
   ggplot(aes(x=d)) +
   geom_point(aes(y=cases)) +
   geom_line(aes(y=cases)) +
-  geom_line(aes(y=Rt * 10), colour="orange") +
-  scale_y_continuous(sec.axis = sec_axis(~./10, name = "Rt"))
+  geom_line(aes(y=Rt * 500), colour="orange") +
+  scale_y_continuous(sec.axis = sec_axis(~./500, name = "Rt"))
 ```
-In our model, we assume that cases arising on a given day aren't necessarily observed until some time in the future: then we suppose those cases are summised to have originated on the correct day. In other words, there are imperfections in case reporting meaning that cases may not be uncovered until much after they arise.
+In our model, we assume that cases arising on a given day aren't necessarily observed until some time in the future. In other words, there are imperfections in case reporting meaning that cases may not be uncovered until much after they arise.
 
 We now use the true case series generated previous to simulate observed case trajectories: there is a trajectory for each onset day.
 ```{r}
 # reporting delay distribution (assumed gamma)
 reporting_delay <- list(mean=10, sd=3)
 
-df <- observed_cases(cases, reporting_delay)
+df <- observed_cases(cases, reporting_delay, days_max_follow_up=40)
 glimpse(df)
 ```
 
@@ -76,5 +77,18 @@ df %>%
   ggplot(aes(x=time_reported, y=cases_reported,
              group=as.factor(time_onset))) +
   geom_line()
+```
+
+Another way of understanding these data is that the historical snapshots of the epidemic change as time goes on and more cases are retroactively reported. We imagine we are at $t=40$ and consider how the history of cases changes as time goes on.
+```{r}
+t <- 40
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
 ```
 

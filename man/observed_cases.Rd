@@ -4,10 +4,10 @@
 \alias{observed_cases}
 \title{Generate reported case trajectories for each day when cases appear}
 \usage{
-observed_cases(I_true, reporting_parameters, days_max_follow_up = 30)
+observed_cases(cases_true, reporting_parameters, days_max_follow_up = 30)
 }
 \arguments{
-\item{I_true}{a vector of true cases originating each day}
+\item{cases_true}{a vector of true cases originating each day}
 
 \item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}

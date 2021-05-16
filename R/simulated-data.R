@@ -49,22 +49,22 @@ detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
 #'
 #' The number of cases originating on day_onset which are subsequently reported
 #' between day_1 and day_2 is modelled as a binomial distribution:
-#' \deqn{I_reported\sim binomial(I_true-I_observed, p_detect)}
-#' where I_observed is the number of cases originating on day_onset reported on
+#' \deqn{cases_reported\sim binomial(cases_true-cases_observed, p_detect)}
+#' where cases_observed is the number of cases originating on day_onset reported on
 #' day_1; p_detect is the probability a case was undetected on day_1 but
 #' is detected by day_2.
 #'
 #' @inheritParams detected_after_unobserved_prob
-#' @param I_true true case count originating on day_onset
-#' @param I_observed observed case count for cases originating on day_onset on
+#' @param cases_true true case count originating on day_onset
+#' @param cases_observed observed case count for cases originating on day_onset on
 #' day_1
 #'
 #' @return a count representing number of cases reported between day_1 and day_2
-observed_cases_single <- function(I_observed, I_true, day_2, day_1, day_onset,
+observed_cases_single <- function(cases_observed, cases_true, day_2, day_1, day_onset,
                                   reporting_parameters){
-  if(I_true < I_observed)
+  if(cases_true < cases_observed)
     stop("true case count must exceed reported")
-  I_remaining <- I_true - I_observed
+  I_remaining <- cases_true - cases_observed
   if(I_remaining == 0)
     cases <- 0
   else
@@ -82,7 +82,7 @@ observed_cases_single <- function(I_observed, I_true, day_2, day_1, day_onset,
 #' @param days_reporting a vector of days on which cases were counted
 #'
 #' @return a vector of reported case counts of same length as days_reporting
-observed_cases_trajectory <- function(I_true, days_reporting, day_onset,
+observed_cases_trajectory <- function(cases_true, days_reporting, day_onset,
                                       reporting_parameters){
 
   I_observed <- vector(length = length(days_reporting))
@@ -94,7 +94,7 @@ observed_cases_trajectory <- function(I_true, days_reporting, day_onset,
       I_previous_obs <- I_observed[i - 1]
       day_previous_report <- days_reporting[i - 1]
     }
-    new_cases <- observed_cases_single(I_previous_obs, I_true,
+    new_cases <- observed_cases_single(I_previous_obs, cases_true,
                                        days_reporting[i],
                                        day_previous_report,
                                        day_onset,
@@ -156,7 +156,7 @@ true_cases_single <- function(Rt, kappa, cases_history, weights){
 #' @param Rt_function takes day as an input and outputs an Rt value
 #' @inheritParams true_cases_single
 #' @inheritParams gamma_discrete_pmf
-#' @param initial_parameters a named list of 'mean' and 'initial_length'
+#' @param initial_parameters a named list of 'mean' and 'length'
 #' which is used to generate seed cases by sampling from a negative binomial
 #' distribution
 #' @param serial_max maximum point at which to truncate sum in renewal process
@@ -183,10 +183,7 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
                        initial_parameters=list(mean=3, length=5),
                        serial_max=40){
 
-  day_series <- seq(1, serial_max, 1)
-  w <- purrr::map_dbl(day_series, ~gamma_discrete_pmf(., serial_parameters))
-  # due to truncation, normalise series
-  w <- w / sum(w)
+  w <- weights_series(serial_max, serial_parameters)
   initial_length <- initial_parameters$length
   I_true <- vector(length=(days_total + initial_length))
 
@@ -214,7 +211,7 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
 
 #' Generate reported case trajectories for each day when cases appear
 #'
-#' @param I_true a vector of true cases originating each day
+#' @param cases_true a vector of true cases originating each day
 #' @inheritParams undetected_prob
 #' @param days_max_follow_up max days at which to simulate reporting case
 #' trajectory
@@ -225,14 +222,14 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
 #' @examples
 #' library(incidenceinflation)
 #' observed_cases(stats::rpois(5, 5), list(mean=5, sd=1))
-observed_cases <- function(I_true, reporting_parameters,
+observed_cases <- function(cases_true, reporting_parameters,
                            days_max_follow_up=30){
-  d_max <- length(I_true)
+  d_max <- length(cases_true)
   for(t in 1:d_max){
     a_max <- min(c(d_max, t + days_max_follow_up))
     obs_time <- seq(t, a_max, 1)
     cases_obs_trajec <- observed_cases_trajectory(
-      I_true=I_true[t],
+      cases_true=cases_true[t],
       days_reporting=obs_time,
       day_onset=t,
       reporting_parameters)
@@ -242,7 +239,7 @@ observed_cases <- function(I_true, reporting_parameters,
       time_onset=rep(t, length(cases_obs_trajec)),
       time_reported=obs_time,
       cases_reported=cases_obs_trajec,
-      cases_true=I_true[t])
+      cases_true=cases_true[t])
     if(t == 1)
       cases_obs <- I_obs_single_onset
     else
