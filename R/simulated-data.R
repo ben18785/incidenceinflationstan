@@ -138,9 +138,8 @@ gamma_discrete_pmf <- function(day, serial_parameters){
 true_cases_single <- function(Rt, kappa, cases_history, weights){
   if(length(cases_history) != length(weights))
     stop("case history vector must be same length as weights")
-  a_sum <- sum(weights * cases_history)
-  mean <- Rt * a_sum
-  stats::rnbinom(1, mu=mean, size=kappa)
+  mean_cases <- expected_cases(Rt=Rt, weights=weights, cases_history=cases_history)
+  stats::rnbinom(1, mu=mean_cases, size=kappa)
 }
 
 #' Generate true case series

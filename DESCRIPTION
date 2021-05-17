@@ -22,5 +22,6 @@ Imports:
     dplyr,
     purrr,
     magrittr,
-    tidyr
+    tidyr,
+    matrixStats
 VignetteBuilder: knitr

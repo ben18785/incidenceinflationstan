@@ -11,3 +11,15 @@ weights_series <- function(t_max, serial_parameters) {
   w <- w / sum(w)
   w
 }
+
+#' Gives cases expected given history of cases and Rt
+#'
+#' @inheritParams state_process_logp
+#' @param weights a vector of normalised weights
+#'
+#' @return an expected number of cases
+expected_cases <- function(Rt, weights, cases_history) {
+  if(length(weights) != length(cases_history))
+    stop("weights and history of cases must be same length.")
+  Rt * sum(weights * cases_history)
+}
