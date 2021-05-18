@@ -56,9 +56,9 @@ In our model, we assume that cases arising on a given day aren't necessarily obs
 We now use the true case series generated previous to simulate observed case trajectories: there is a trajectory for each onset day.
 ```{r}
 # reporting delay distribution (assumed gamma)
-reporting_delay <- list(mean=10, sd=3)
+r_params <- list(mean=10, sd=3)
 
-df <- observed_cases(cases, reporting_delay, days_max_follow_up=40)
+df <- observed_cases(cases, r_params, days_max_follow_up=40)
 glimpse(df)
 ```
 
@@ -89,6 +89,22 @@ df %>%
   geom_line(aes(colour=time_reported,
                 group=time_reported)) +
   geom_point(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
+```
+
+The process of generated these types of snapshot data is automated in a single function.
+```{r}
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa)
+
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  geom_line(aes(y=cases_true), colour="black") +
   scale_colour_viridis_c(begin = 0.2)
 ```
 

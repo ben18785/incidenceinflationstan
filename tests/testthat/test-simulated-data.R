@@ -245,3 +245,30 @@ test_that("thin_series runs ok", {
   expect_equal(sum(unique(thinned_df$cases_reported)),
                sum(unique(df$cases_reported)))
 })
+
+test_that("generate_snapshots produces reasonably shaped outputs", {
+  days_total <- 100
+  v_Rt <- c(rep(1.3, 25), rep(1, 25), rep(2, 50))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  s_params <- list(mean=2, sd=1)
+  kappa <- 2
+  r_params <- list(mean=3, sd=2)
+  current_time <- Sys.time()
+  set.seed(current_time)
+  reported_cases <- generate_snapshots(
+       days_total, Rt_function,
+       s_params, r_params)
+  cnames <- colnames(reported_cases)
+  expect_true(all.equal(cnames, c("time_onset", "time_reported", "cases_reported", "cases_true" )))
+  set.seed(current_time)
+  reported_cases_thinned <- generate_snapshots(
+    days_total, Rt_function,
+    s_params, r_params, thinned=TRUE)
+  expect_true(nrow(reported_cases) > nrow(reported_cases_thinned))
+
+  # check that thinned cases are subset of full df (can do this because of seeding)
+  colpaste_thinned <- do.call(paste0, reported_cases_thinned)
+  colpaste_full <- do.call(paste0, reported_cases)
+  expect_equal(mean(colpaste_thinned %in% colpaste_full), 1)
+  set.seed(NULL)
+})

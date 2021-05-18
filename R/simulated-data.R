@@ -291,3 +291,56 @@ thin_series <- function(case_obs) {
   }
   thinned_df
 }
+
+#' Generates case data with snapshots of reported cases at each onset day
+#'
+#' @inheritParams true_cases
+#' @inheritParams observed_cases
+#' @param thinned a Boolean indicating whether to thin cases to only informative time points
+#'
+#' @return a tibble with observed case trajectories for each time of onset
+#' @export
+#' @example
+#' library(incidenceinflation)
+#' # generate case series for 100 days with time-varying Rt
+#' days_total <- 100
+#'
+#' # make Rt interpolation function
+#' v_Rt <- c(rep(1.3, 25), rep(1, 25), rep(2, 50))
+#' Rt_function <- stats::approxfun(1:days_total, v_Rt)
+#'
+#' # serial interval parameters
+#' s_params <- list(mean=5, sd=1)
+#'
+#' # renewal over-dispersion parameter
+#' kappa <- 2
+#'
+#' # reporting delays
+#' r_params <- list(10, 5)
+#' reported_cases <- generate_snapshots(
+#'     days_total, Rt_function,
+#'     s_params, r_params)
+generate_snapshots <- function(days_total, Rt_function, serial_parameters,
+                            reporting_parameters,
+                            thinned=FALSE,
+                            kappa=1000,
+                            days_max_follow_up=30,
+                            initial_parameters=list(mean=30, length=20),
+                            serial_max=40) {
+  real_cases <- true_cases(
+    days_total=days_total, Rt_function=Rt_function,
+    kappa=kappa, serial_parameters=serial_parameters,
+    initial_parameters=initial_parameters,
+    serial_max=serial_max
+    )
+
+  reported_cases <- observed_cases(
+    cases_true=real_cases,
+    reporting_parameters=reporting_parameters,
+    days_max_follow_up=days_max_follow_up)
+
+  if(thinned)
+    reported_cases <- thin_series(reported_cases)
+
+  reported_cases
+}
