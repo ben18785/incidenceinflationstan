@@ -55,8 +55,8 @@ test_that("observation_process_single_logp can return vectors", {
 })
 
 test_that("observation_process_logp returns reasonable log prob values", {
-  observation_matrix <- dplyr::tibble(day=c(1, 20, 21),
-                                      reported_cases=c(3, 5, 7))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 20, 21),
+                                      cases_reported=c(3, 5, 7))
   reporting_parameters <- list(mean=1, sd=1)
   logp <- observation_process_logp(observation_df=observation_matrix,
                                    cases_true = 10,
@@ -65,22 +65,22 @@ test_that("observation_process_logp returns reasonable log prob values", {
   expect_true(logp < 0)
 
   # test that prob declines as delay increases
-  observation_matrix <- dplyr::tibble(day=c(1, 20, 21),
-                                      reported_cases=c(1, 1, 1))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 20, 21),
+                                      cases_reported=c(1, 1, 1))
   logp1 <- observation_process_logp(observation_df=observation_matrix,
                                    cases_true = 10,
                                    day_onset = 0,
                                    reporting_parameters=reporting_parameters)
   expect_true(logp1 < logp)
 
-  observation_matrix <- dplyr::tibble(day=c(1, 1, 5),
-                                      reported_cases=c(3, 5, 7))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 1, 5),
+                                      cases_reported=c(3, 5, 7))
   expect_error(observation_process_logp(observation_df=observation_matrix,
                                    cases_true = 10,
                                    day_onset = 1,
                                    reporting_parameters=reporting_parameters))
-  observation_matrix <- dplyr::tibble(day=c(1, 2, 5),
-                                      reported_cases=c(3, 2, 7))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 2, 5),
+                                      cases_reported=c(3, 2, 7))
   expect_error(observation_process_logp(observation_df=observation_matrix,
                                         cases_true = 10,
                                         day_onset = 1,
@@ -120,8 +120,8 @@ test_that("state_process_logp produces works fine with vectors of true cases", {
 })
 
 test_that("conditional_cases_logp returns reasonable values", {
-  observation_matrix <- dplyr::tibble(day=c(1, 3, 5),
-                                      reported_cases=c(1, 1, 1))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
+                                      cases_reported=c(1, 1, 1))
   reporting_parameters <- list(mean=1, sd=1)
   cases_true <- 80
   s_params <- list(mean=5, sd=2)
@@ -149,8 +149,8 @@ test_that("conditional_cases_logp returns reasonable values", {
 })
 
 test_that("conditional_cases_logp works fine with vectorised true cases", {
-  observation_matrix <- dplyr::tibble(day=c(1, 3, 5),
-                                      reported_cases=c(1, 1, 1))
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
+                                      cases_reported=c(1, 1, 1))
   reporting_parameters <- list(mean=1, sd=1)
   cases_true <- 10:20
   s_params <- list(mean=5, sd=2)

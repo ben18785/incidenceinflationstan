@@ -40,14 +40,14 @@ observation_process_single_logp <- function(cases_true, cases_day_2, cases_day_1
 #' This function calculates the combined probability of all observed cases pertaining
 #' to a particular onset date.
 #'
-#' @param observation_df a two-column data frame with columns 'day' and 'reported_cases'
+#' @param observation_df a two-column data frame with columns 'time_reported' and 'cases_reported'
 #' @inheritParams observation_process_single_logp
 #'
 #' @return a log-probability or vector of log-probabilities
 observation_process_logp <- function(observation_df, cases_true,
                                      day_onset, reporting_parameters){
-  observation_days <- observation_df$day
-  observation_cases <- observation_df$reported_cases
+  observation_days <- observation_df$time_reported
+  observation_cases <- observation_df$cases_reported
   change_days <- diff(observation_days)
   if(any(change_days <= 0))
     stop("days in observation matrix must be increasing.")
@@ -100,7 +100,10 @@ state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters)
 #' @return an (unnormalised) log-probability or vector of such log-probabilities
 conditional_cases_logp <- function(cases_true, observation_df, cases_history,
                                    Rt, day_onset, serial_parameters, reporting_parameters) {
-  logp_observation <- observation_process_logp(observation_df=observation_df,
+
+  logp_observation <- 0
+  if(nrow(observation_df) > 1) # handling cases arising today which were reported today
+    logp_observation <- observation_process_logp(observation_df=observation_df,
                                                cases_true=cases_true,
                                                day_onset=day_onset,
                                                reporting_parameters=reporting_parameters)
