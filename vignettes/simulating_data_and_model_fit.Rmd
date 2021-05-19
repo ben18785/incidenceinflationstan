@@ -74,8 +74,9 @@ df %>%
 Now plotting the same but for each onset day, we obtain a series of trajectories for reported cases.
 ```{r}
 df %>% 
+  filter(time_onset <= 10) %>% 
   ggplot(aes(x=time_reported, y=cases_reported,
-             group=as.factor(time_onset))) +
+             colour=time_onset, group=as.factor(time_onset))) +
   geom_line()
 ```
 
