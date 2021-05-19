@@ -54,23 +54,27 @@ sample_cases_history <- function(
   observation_onset_df, max_cases,
   Rt_function, serial_parameters, reporting_parameters,
   ndraws=1,
-  p_gamma_cutoff=0.999) {
+  p_gamma_cutoff=0.99) {
 
   uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_parameters)
   start_uncertain_period <- max(observation_onset_df$time_onset) - uncertain_period
   observation_history_df <- observation_onset_df %>%
+    dplyr::group_by(time_onset) %>%
     dplyr::mutate(cases_true=ifelse(time_onset < start_uncertain_period,
-                                    cases_reported, NA))
+                                    max(cases_reported), NA)) %>%
+    ungroup()
 
   onset_times <- unique(observation_history_df$time_onset)
-
   onset_times_uncertain_period <- onset_times[onset_times >= start_uncertain_period]
+
   for(i in seq_along(onset_times_uncertain_period)) {
     onset_time <- onset_times_uncertain_period[i]
     observation_df <- observation_history_df %>%
       dplyr::filter(time_onset==onset_time)
     pre_observation_df <- observation_history_df %>%
-      dplyr::filter(time_onset < onset_time)
+      dplyr::filter(time_onset < onset_time) %>%
+      dplyr::select(time_onset, cases_true) %>%
+      unique()
     cases_history <- rev(pre_observation_df$cases_true)
     observation_df <- observation_df %>%
       dplyr::select(time_reported, cases_reported)

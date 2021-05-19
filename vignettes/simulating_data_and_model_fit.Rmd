@@ -108,3 +108,24 @@ df %>%
   scale_colour_viridis_c(begin = 0.2)
 ```
 
+Trying to estimate cases but assuming we now the Rt values over time, the reporting delay distribution and the serial delay distribution.
+```{r}
+days_total <- 100
+kappa <- 1000
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                          kappa=kappa, thinned=T)
+max_cases <- 5000
+df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
+df$cases_estimated <- df_est$cases_true
+df %>% 
+  pivot_longer(c(cases_true, cases_estimated)) %>%
+  group_by(time_onset) %>% 
+  mutate(cases_reported=max(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=value, colour=as.factor(name))) +
+  geom_line() +
+  geom_line(aes(y=cases_reported), colour="black")
+```
+
+Sampling a value of Rt but assuming we know the true case history (and everything else).
+
+Estimating the reporting parameters but assuming we know everything else.
