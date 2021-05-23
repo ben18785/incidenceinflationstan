@@ -23,3 +23,51 @@ expected_cases <- function(Rt, weights, cases_history) {
     stop("weights and history of cases must be same length.")
   Rt * sum(weights * cases_history)
 }
+
+#' Reparameterisation of gamma cdf using mean and sd
+#'
+#' @param x a value to be evaluated at
+#' @param mu a mean
+#' @param sigma a standard deviation
+#'
+#' @return a cumulative density
+pgamma_mean_sd <- function(x, mu, sigma) {
+  shape <- mu^2 / sigma^2
+  rate <- mu / sigma^2
+  stats::pgamma(x, shape, rate)
+}
+
+#' Reparameterisation of gamma inverse-cdf using mean and sd
+#'
+#' @param x a value to be evaluated at
+#' @param mu a mean
+#' @param sigma a standard deviation
+#'
+#' @return a positive value
+qgamma_mean_sd <- function(x, mu, sigma) {
+  shape <- mu^2 / sigma^2
+  rate <- mu / sigma^2
+  stats::qgamma(x, shape, rate)
+}
+
+#' Discrete gamma probability mass function
+#'
+#' @param day day to evaluate pmf
+#' @param serial_parameters named list of 'mean' and 'sd' of gamma distribution
+#' characterising the serial interval distribution
+#'
+#' @return a probability
+gamma_discrete_pmf <- function(day, serial_parameters){
+  delay_mean <- serial_parameters$mean
+  delay_sd <- serial_parameters$sd
+  pgamma_mean_sd(day + 0.5, delay_mean, delay_sd) -
+    pgamma_mean_sd(day - 0.5, delay_mean, delay_sd)
+}
+
+check_parameter_names <- function(reporting_parameters, serial_parameters) {
+  correct_names <- c("mean", "sd")
+  if(!all(correct_names %in% names(reporting_parameters)))
+    stop("reporting_parameters must contain 'mean' and 'sd'.")
+  if(!all(correct_names %in% names(serial_parameters)))
+    stop("serial_parameters must contain 'mean' and 'sd'.")
+}

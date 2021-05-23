@@ -47,3 +47,24 @@ a tibble with observed case trajectories for each time of onset
 \description{
 Generates case data with snapshots of reported cases at each onset day
 }
+\examples{
+library(incidenceinflation)
+# generate case series for 100 days with time-varying Rt
+days_total <- 100
+
+# make Rt interpolation function
+v_Rt <- c(rep(1.3, 25), rep(1, 25), rep(2, 50))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+# serial interval parameters
+s_params <- list(mean=5, sd=1)
+
+# renewal over-dispersion parameter
+kappa <- 2
+
+# reporting delays
+r_params <- list(mean=10, sd=5)
+reported_cases <- generate_snapshots(
+    days_total, Rt_function,
+    s_params, r_params)
+}
