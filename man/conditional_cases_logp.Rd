@@ -18,7 +18,7 @@ conditional_cases_logp(
 \arguments{
 \item{cases_true}{true case count originating on day_onset}
 
-\item{observation_df}{a two-column data frame with columns 'day' and 'reported_cases'}
+\item{observation_df}{a two-column data frame with columns 'time_reported' and 'cases_reported'}
 
 \item{cases_history}{a vector containing history of cases arranged from
 recent to past}

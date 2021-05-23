@@ -12,7 +12,7 @@ observation_process_logp(
 )
 }
 \arguments{
-\item{observation_df}{a two-column data frame with columns 'day' and 'reported_cases'}
+\item{observation_df}{a two-column data frame with columns 'time_reported' and 'cases_reported'}
 
 \item{cases_true}{true case count(s) originating on day_onset: can be a single value or vector}
 

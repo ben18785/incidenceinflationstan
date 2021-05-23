@@ -100,22 +100,6 @@ test_that("observed_cases_trajectory increases faster with shorter delay", {
   expect_true(max(reported_cases_fast) > max(reported_cases_slow))
 })
 
-test_that("gamma_discrete_pmf sums near to 1", {
-  x <- seq(0, 10000, 1)
-  reporting_parameters <- list(mean=1, sd=1)
-  vals <- purrr::map_dbl(x, ~gamma_discrete_pmf(., reporting_parameters))
-  expect_true(1 - sum(vals) < 0.01)
-})
-
-test_that("gamma_discrete_pmf peaks where it should", {
-  d_params <- list(mean=5, sd=1)
-  expect_true(gamma_discrete_pmf(5, d_params) >
-              gamma_discrete_pmf(10, d_params))
-  d_params <- list(mean=10, sd=1)
-  expect_true(gamma_discrete_pmf(5, d_params) <
-                gamma_discrete_pmf(10, d_params))
-})
-
 test_that("true_cases_single returns sensible values", {
   days <- seq(1, 40, 1)
   d_params <- list(mean=5, sd=1)

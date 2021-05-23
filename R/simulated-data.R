@@ -17,8 +17,7 @@ undetected_prob <- function(t_1, t_onset, reporting_parameters){
     stop("t_1 must equal or exceed t_onset")
   delay_mean <- reporting_parameters$mean
   delay_sd <- reporting_parameters$sd
-  1 - stats::pgamma(t_1 - t_onset, delay_mean^2 / delay_sd^2,
-                    delay_mean / delay_sd^2)
+  1 - pgamma_mean_sd(t_1 - t_onset, delay_mean, delay_sd)
 }
 
 #' Probability a case is detected by a later time given it was unobserved
@@ -41,8 +40,8 @@ detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
   if(day_2 < day_1)
     stop("second observation date must be at same time or after first")
   (undetected_prob(day_1 + 0.5, day_onset, reporting_parameters) -
-   undetected_prob(day_2 + 0.5, day_onset, reporting_parameters)) /
-  undetected_prob(day_1 + 0.5, day_onset, reporting_parameters)
+      undetected_prob(day_2 + 0.5, day_onset, reporting_parameters)) /
+    undetected_prob(day_1 + 0.5, day_onset, reporting_parameters)
 }
 
 #' Cases arising on a given day which are reported between two subsequent days
@@ -69,8 +68,8 @@ observed_cases_single <- function(cases_observed, cases_true, day_2, day_1, day_
     cases <- 0
   else
     cases <- stats::rbinom(1, I_remaining,
-      detected_after_unobserved_prob(day_2, day_1, day_onset,
-                                     reporting_parameters))
+                           detected_after_unobserved_prob(day_2, day_1, day_onset,
+                                                          reporting_parameters))
   cases
 }
 
@@ -102,21 +101,6 @@ observed_cases_trajectory <- function(cases_true, days_reporting, day_onset,
     I_observed[i] <- I_previous_obs + new_cases
   }
   I_observed
-}
-
-#' Discrete gamma probability mass function
-#'
-#' @param day day to evaluate pmf
-#' @param serial_parameters named list of 'mean' and 'sd' of gamma distribution
-#' characterising the serial interval distribution
-#'
-#' @return a probability
-gamma_discrete_pmf <- function(day, serial_parameters){
-  delay_mean <- serial_parameters$mean
-  delay_sd <- serial_parameters$sd
-  a <- delay_mean^2 / delay_sd^2
-  b <- delay_mean / delay_sd^2
-  stats::pgamma(day + 0.5, a, b) - stats::pgamma(day - 0.5, a, b)
 }
 
 #' Generates true cases for a single day
@@ -243,7 +227,7 @@ observed_cases <- function(cases_true, reporting_parameters,
       cases_obs <- I_obs_single_onset
     else
       cases_obs <- cases_obs %>%
-        dplyr::bind_rows(I_obs_single_onset)
+      dplyr::bind_rows(I_obs_single_onset)
   }
   cases_obs
 }
@@ -287,7 +271,7 @@ thin_series <- function(case_obs) {
       thinned_df <- thinned_single_df
     else
       thinned_df <- thinned_df %>%
-        dplyr::bind_rows(thinned_single_df)
+      dplyr::bind_rows(thinned_single_df)
   }
   thinned_df
 }
@@ -300,7 +284,7 @@ thin_series <- function(case_obs) {
 #'
 #' @return a tibble with observed case trajectories for each time of onset
 #' @export
-#' @example
+#' @examples
 #' library(incidenceinflation)
 #' # generate case series for 100 days with time-varying Rt
 #' days_total <- 100
@@ -316,23 +300,27 @@ thin_series <- function(case_obs) {
 #' kappa <- 2
 #'
 #' # reporting delays
-#' r_params <- list(10, 5)
+#' r_params <- list(mean=10, sd=5)
 #' reported_cases <- generate_snapshots(
 #'     days_total, Rt_function,
 #'     s_params, r_params)
 generate_snapshots <- function(days_total, Rt_function, serial_parameters,
-                            reporting_parameters,
-                            thinned=FALSE,
-                            kappa=1000,
-                            days_max_follow_up=30,
-                            initial_parameters=list(mean=30, length=20),
-                            serial_max=40) {
+                               reporting_parameters,
+                               thinned=FALSE,
+                               kappa=1000,
+                               days_max_follow_up=30,
+                               initial_parameters=list(mean=30, length=20),
+                               serial_max=40) {
+
+  check_parameter_names(reporting_parameters,
+                        serial_parameters)
+
   real_cases <- true_cases(
     days_total=days_total, Rt_function=Rt_function,
     kappa=kappa, serial_parameters=serial_parameters,
     initial_parameters=initial_parameters,
     serial_max=serial_max
-    )
+  )
 
   reported_cases <- observed_cases(
     cases_true=real_cases,

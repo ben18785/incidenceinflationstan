@@ -23,5 +23,6 @@ Imports:
     purrr,
     magrittr,
     tidyr,
-    matrixStats
+    matrixStats,
+    rlang
 VignetteBuilder: knitr

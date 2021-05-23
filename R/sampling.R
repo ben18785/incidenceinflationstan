@@ -20,6 +20,9 @@ sample_true_cases_single_onset <- function(
   logps <- conditional_cases_logp(possible_cases, observation_df, cases_history,
                                   Rt, day_onset, serial_parameters, reporting_parameters)
   probs <- exp(logps - matrixStats::logSumExp(logps))
+  if(dplyr::last(probs) > 0.01)
+    warning(paste0("Cases too few for onset day: ", day_onset,
+                   ". Increase max_cases."))
   sample(possible_cases, ndraws, prob=probs, replace=TRUE)
 }
 
@@ -33,7 +36,7 @@ sample_true_cases_single_onset <- function(
 max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters) {
   r_mean <- reporting_parameters$mean
   r_sd <- reporting_parameters$sd
-  days_from_end <- qgamma(p_gamma_cutoff, r_mean^2 / r_sd^2, r_mean / r_sd^2)
+  days_from_end <- qgamma_mean_sd(p_gamma_cutoff, r_mean, r_sd)
   days_from_end
 }
 
@@ -48,48 +51,47 @@ max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters) {
 #' @inheritParams true_cases
 #' @inheritParams max_uncertain_days
 #'
-#' @return a vector of cases corresponding to the number of cases arising each onset day
+#' @return a tibble with an extra cases_estimated column
 #' @export
+#' @importFrom rlang .data
 sample_cases_history <- function(
   observation_onset_df, max_cases,
   Rt_function, serial_parameters, reporting_parameters,
-  ndraws=1,
   p_gamma_cutoff=0.99) {
 
   uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_parameters)
   start_uncertain_period <- max(observation_onset_df$time_onset) - uncertain_period
   observation_history_df <- observation_onset_df %>%
-    dplyr::group_by(time_onset) %>%
-    dplyr::mutate(cases_true=ifelse(time_onset < start_uncertain_period,
-                                    max(cases_reported), NA)) %>%
-    ungroup()
-
+    dplyr::group_by(.data$time_onset) %>%
+    dplyr::mutate(cases_estimated=ifelse(.data$time_onset < start_uncertain_period,
+                                    max(.data$cases_reported), NA)) %>%
+    dplyr::ungroup()
   onset_times <- unique(observation_history_df$time_onset)
   onset_times_uncertain_period <- onset_times[onset_times >= start_uncertain_period]
 
   for(i in seq_along(onset_times_uncertain_period)) {
     onset_time <- onset_times_uncertain_period[i]
-    observation_df <- observation_history_df %>%
-      dplyr::filter(time_onset==onset_time)
+    snapshots_at_onset_time_df <- observation_history_df %>%
+      dplyr::filter(.data$time_onset==onset_time) %>%
+      dplyr::select(.data$time_reported, .data$cases_reported)
     pre_observation_df <- observation_history_df %>%
-      dplyr::filter(time_onset < onset_time) %>%
-      dplyr::select(time_onset, cases_true) %>%
-      unique()
-    cases_history <- rev(pre_observation_df$cases_true)
-    observation_df <- observation_df %>%
-      dplyr::select(time_reported, cases_reported)
+      dplyr::filter(.data$time_onset < onset_time) %>%
+      dplyr::select(.data$time_onset, .data$cases_estimated) %>%
+      unique() %>%
+      dplyr::arrange(dplyr::desc(.data$time_onset))
+    cases_history <- pre_observation_df$cases_estimated
     Rt <- Rt_function(onset_time)
     case <- sample_true_cases_single_onset(
-      observation_df=observation_df,
+      observation_df=snapshots_at_onset_time_df,
       cases_history=cases_history,
       max_cases=max_cases,
       Rt=Rt,
       day_onset=onset_time,
       serial_parameters=serial_parameters,
       reporting_parameters=reporting_parameters,
-      ndraws=ndraws)
+      ndraws=1)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
-    observation_history_df$cases_true[index_onset_time] <- case
+    observation_history_df$cases_estimated[index_onset_time] <- case
   }
   observation_history_df
 }
