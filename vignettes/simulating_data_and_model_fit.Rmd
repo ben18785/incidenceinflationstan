@@ -117,7 +117,7 @@ df <- generate_snapshots(days_total, Rt_function,
                          s_params, r_params,
                           kappa=kappa, thinned=T)
 max_cases <- 5000
-df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
+df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params, maximise = F)
 df_est %>% 
   group_by(time_onset) %>% 
   mutate(cases_reported=max(cases_reported)) %>% 

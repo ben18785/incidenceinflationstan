@@ -7,12 +7,14 @@
 #' @param max_cases maximum possible cases thought to arise on a given day
 #' @inheritParams conditional_cases_logp
 #' @param ndraws number of draws of cases
+#' @param maximise rather than sample a case count give the case count with the
+#' maximum probability (by default is FALSE)
 #'
 #' @return a sampled case count arising on a given onset day
 sample_true_cases_single_onset <- function(
   observation_df, cases_history, max_cases,
   Rt, day_onset, serial_parameters, reporting_parameters,
-  ndraws=1) {
+  ndraws=1, maximise=FALSE) {
   max_observed_cases <- max(observation_df$cases_reported)
   if(max_observed_cases > max_cases)
     stop("Max possible cases should be (much) greater than max observed cases.")
@@ -23,7 +25,10 @@ sample_true_cases_single_onset <- function(
   if(dplyr::last(probs) > 0.01)
     warning(paste0("Cases too few for onset day: ", day_onset,
                    ". Increase max_cases."))
-  sample(possible_cases, ndraws, prob=probs, replace=TRUE)
+  if(maximise)
+    possible_cases[which.max(probs)]
+  else
+    sample(possible_cases, ndraws, prob=probs, replace=TRUE)
 }
 
 #' Calculates max number of days we are uncertain about reporting
@@ -57,7 +62,8 @@ max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters) {
 sample_cases_history <- function(
   observation_onset_df, max_cases,
   Rt_function, serial_parameters, reporting_parameters,
-  p_gamma_cutoff=0.99) {
+  p_gamma_cutoff=0.99,
+  maximise=FALSE) {
 
   uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_parameters)
   start_uncertain_period <- max(observation_onset_df$time_onset) - uncertain_period
@@ -89,11 +95,28 @@ sample_cases_history <- function(
       day_onset=onset_time,
       serial_parameters=serial_parameters,
       reporting_parameters=reporting_parameters,
-      ndraws=1)
+      ndraws=1,
+      maximise=maximise)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
     observation_history_df$cases_estimated[index_onset_time] <- case
   }
   observation_history_df
+}
+
+#' Draws from the gamma distribution or returns the value which maximises
+#' it
+#'
+#' @param shape the shape parameter of a gamma distribution
+#' @param rate the rate parameter of a gamma distribution
+#' @param ndraws number of draws if maximise=FALSE
+#' @param maximise whether to return the mode of the gamma distribution
+#'
+#' @return a value or (if ndraws > 1) a vector of values
+sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
+  if(maximise)
+    (shape - 1) / rate
+  else
+    stats::rgamma(ndraws, shape, rate)
 }
 
 #' Sample a single Rt value corresponding to a single piecewise-
@@ -109,23 +132,22 @@ sample_cases_history <- function(
 #'
 #' @return a draw for Rt
 #' @importFrom rlang .data
-sample_Rt_single_piece <- function(Rt_piece_index,
-                                   cases_history_df,
-                                   Rt_prior_parameters,
-                                   serial_parameters,
-                                   serial_max=40,
-                                   ndraws=1) {
+sample_Rt_single_piece <- function(
+    Rt_piece_index, cases_history_df,
+    Rt_prior_parameters, serial_parameters,
+    serial_max=40, ndraws=1,
+    maximise=FALSE) {
   short_df <- cases_history_df %>%
     dplyr::filter(.data$Rt_index <= Rt_piece_index)
   time_max_post_initial_period <- max(short_df$time_onset) - serial_max
 
-  # sample from prior since no data
+  # sample from prior if no data
   posterior_shape <- Rt_prior_parameters$shape
   posterior_rate <- Rt_prior_parameters$rate
-  if(time_max_post_initial_period <= 0)
-    return(stats::rgamma(ndraws,
-                         posterior_shape,
-                         posterior_rate))
+  if(time_max_post_initial_period <= 0) {
+    return(sample_or_maximise_gamma(
+      posterior_shape, posterior_rate, ndraws, maximise))
+  }
 
   # if some data but not enough for whole period
   # do not use truncated points as observed data
@@ -152,7 +174,8 @@ sample_Rt_single_piece <- function(Rt_piece_index,
     cases_history <- cases_history[1:serial_max]
     posterior_rate <- posterior_rate + sum(w * cases_history)
   }
-  stats::rgamma(ndraws, posterior_shape, posterior_rate)
+  sample_or_maximise_gamma(
+    posterior_shape, posterior_rate, ndraws, maximise)
 }
 
 
@@ -169,6 +192,9 @@ sample_Rt_single_piece <- function(Rt_piece_index,
 #' by:
 #' \deqn{Rt ~ gamma(alpha + \sum_{t in onset_time_set} cases_true_t,
 #'       beta + \sum_{t in onset_time_set}\sum_tau=1^t_max w_t cases_true_t-tau))}
+#' This function either returns a draw (or draws if ndraws>1) from
+#' this posterior, or it returns the Rt set that maximises it
+#' (if maximise=TRUE).
 #'
 #' @inheritParams sample_Rt_single_piece
 #' @return a tibble with three columns: "Rt_piece_index", "draw_index", "Rt"
@@ -177,7 +203,8 @@ sample_Rt <- function(cases_history_df,
                       Rt_prior_parameters,
                       serial_parameters,
                       serial_max=40,
-                      ndraws=1) {
+                      ndraws=1,
+                      maximise=FALSE) {
   Rt_piece_indices <- unique(cases_history_df$Rt_index)
   num_Rt_pieces <- length(Rt_piece_indices)
   draw_indices <- seq(1, ndraws, 1)
@@ -189,7 +216,7 @@ sample_Rt <- function(cases_history_df,
     Rt_vals <- sample_Rt_single_piece(
       Rt_piece_index, cases_history_df,
       Rt_prior_parameters, serial_parameters,
-      serial_max, ndraws)
+      serial_max, ndraws, maximise=maximise)
     for(j in 1:ndraws) {
       m_draws[k, ] <- c(Rt_piece_index, j, Rt_vals[j])
       k <- k + 1
