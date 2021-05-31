@@ -128,5 +128,24 @@ df_est %>%
 ```
 
 Sampling a value of Rt but assuming we know the true case history (and everything else).
+```{r}
+cases_history_df <- df
+R0_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+R0_index_lookup <- tibble(
+  time_onset=seq_along(R0_indices),
+  R0_index=R0_indices)
+cases_history_df <- cases_history_df %>% 
+  left_join(R0_index_lookup, by = "time_onset") %>% 
+  select(time_onset, cases_true, R0_index) %>% 
+  unique()
+R0_prior <- list(shape=5, rate=5)
+R0_vals <- sample_R0_single_piece(
+  2, cases_history_df,
+  R0_prior, s_params,
+  ndraws = 1000,
+  serial_max = 20)
+hist(R0_vals)
+```
+
 
 Estimating the reporting parameters but assuming we know everything else.

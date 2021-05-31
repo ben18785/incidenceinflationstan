@@ -95,3 +95,61 @@ sample_cases_history <- function(
   }
   observation_history_df
 }
+
+#' Title
+#'
+#' @param R0_piece_index the index of the R0 piece being sampled
+#' @param cases_history_df a tibble with three columns: time_onset, cases_true
+#' and R0_index
+#' @param R0_prior_parameters a list with elements 'shape' and 'rate' describing
+#' the gamma prior for R0
+#' @inheritParams sample_cases_history
+#' @param ndraws number of draws of R0
+#'
+#' @return a draw for R0
+#' @importFrom rlang .data
+sample_R0_single_piece <- function(R0_piece_index,
+                                   cases_history_df,
+                                   R0_prior_parameters,
+                                   serial_parameters,
+                                   serial_max=40,
+                                   ndraws=1) {
+  short_df <- cases_history_df %>%
+    dplyr::filter(.data$R0_index <= R0_piece_index)
+  time_max_post_initial_period <- max(short_df$time_onset) - serial_max
+
+  # sample from prior since no data
+  alpha <- R0_prior_parameters$shape
+  beta <- R0_prior_parameters$rate
+  if(time_max_post_initial_period <= 0)
+    return(stats::rgamma(ndraws, alpha, beta))
+
+  # if some data but not enough for whole period
+  # do not use truncated points as observed data
+  # (but they will be used as covariates)
+  short_df <- short_df %>%
+    dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
+    dplyr::mutate(is_observed_data=if_else(
+      (time_after_start > 0) & (R0_index == R0_piece_index), 1, 0))
+  onset_times <- short_df %>%
+    dplyr::filter(is_observed_data == 1) %>%
+    dplyr::pull(time_onset)
+
+  posterior_shape <- alpha
+  posterior_rate <- beta
+  w <- weights_series(serial_max, serial_parameters)
+  for(i in seq_along(onset_times)) {
+    onset_time <- onset_times[i]
+    true_cases <- short_df %>%
+      dplyr::filter(.data$time_onset == onset_time) %>%
+      dplyr::pull(cases_true)
+    posterior_shape <- posterior_shape + true_cases
+    cases_history <- short_df %>%
+      dplyr::filter(.data$time_onset < onset_time) %>%
+      dplyr::arrange(desc(time_onset)) %>%
+      dplyr::pull(cases_true)
+    cases_history <- cases_history[1:serial_max]
+    posterior_rate <- posterior_rate + sum(w * cases_history)
+  }
+  stats::rgamma(ndraws, posterior_shape, posterior_rate)
+}
