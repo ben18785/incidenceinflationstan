@@ -96,33 +96,36 @@ sample_cases_history <- function(
   observation_history_df
 }
 
-#' Title
+#' Sample a single Rt value corresponding to a single piecewise-
+#' constant element of an Rt vector
 #'
-#' @param R0_piece_index the index of the R0 piece being sampled
+#' @param Rt_piece_index the index of the Rt piece being sampled
 #' @param cases_history_df a tibble with three columns: time_onset, cases_true
-#' and R0_index
-#' @param R0_prior_parameters a list with elements 'shape' and 'rate' describing
-#' the gamma prior for R0
+#' and Rt_index
+#' @param Rt_prior_parameters a list with elements 'shape' and 'rate' describing
+#' the gamma prior for Rt
 #' @inheritParams sample_cases_history
-#' @param ndraws number of draws of R0
+#' @param ndraws number of draws of Rt
 #'
-#' @return a draw for R0
+#' @return a draw for Rt
 #' @importFrom rlang .data
-sample_R0_single_piece <- function(R0_piece_index,
+sample_Rt_single_piece <- function(Rt_piece_index,
                                    cases_history_df,
-                                   R0_prior_parameters,
+                                   Rt_prior_parameters,
                                    serial_parameters,
                                    serial_max=40,
                                    ndraws=1) {
   short_df <- cases_history_df %>%
-    dplyr::filter(.data$R0_index <= R0_piece_index)
+    dplyr::filter(.data$Rt_index <= Rt_piece_index)
   time_max_post_initial_period <- max(short_df$time_onset) - serial_max
 
   # sample from prior since no data
-  alpha <- R0_prior_parameters$shape
-  beta <- R0_prior_parameters$rate
+  posterior_shape <- Rt_prior_parameters$shape
+  posterior_rate <- Rt_prior_parameters$rate
   if(time_max_post_initial_period <= 0)
-    return(stats::rgamma(ndraws, alpha, beta))
+    return(stats::rgamma(ndraws,
+                         posterior_shape,
+                         posterior_rate))
 
   # if some data but not enough for whole period
   # do not use truncated points as observed data
@@ -130,13 +133,11 @@ sample_R0_single_piece <- function(R0_piece_index,
   short_df <- short_df %>%
     dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
     dplyr::mutate(is_observed_data=if_else(
-      (time_after_start > 0) & (R0_index == R0_piece_index), 1, 0))
+      (time_after_start > 0) & (Rt_index == Rt_piece_index), 1, 0))
   onset_times <- short_df %>%
     dplyr::filter(is_observed_data == 1) %>%
     dplyr::pull(time_onset)
 
-  posterior_shape <- alpha
-  posterior_rate <- beta
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
     onset_time <- onset_times[i]
@@ -152,4 +153,50 @@ sample_R0_single_piece <- function(R0_piece_index,
     posterior_rate <- posterior_rate + sum(w * cases_history)
   }
   stats::rgamma(ndraws, posterior_shape, posterior_rate)
+}
+
+
+#' Sample piecewise-constant Rt values
+#'
+#' Models the renewal process as from a Poisson:
+#' \deqn{cases_true_t ~ Poisson(Rt * \sum_tau=1^t_max w_t cases_true_t-tau))}
+#' If an Rt value is given a gamma prior, this results in a posterior
+#' distribution:
+#' \deqn{Rt ~ gamma(alpha + cases_true_t, beta + \sum_tau=1^t_max w_t cases_true_t-tau))}
+#' where alpha and beta are the shape and rate parameters of the gamma
+#' prior distribution. Here, we assume that Rt is constant over a set of onset
+#' times 'onset_time_set'. This means that the posterior for a single Rt value is given
+#' by:
+#' \deqn{Rt ~ gamma(alpha + \sum_{t in onset_time_set} cases_true_t,
+#'       beta + \sum_{t in onset_time_set}\sum_tau=1^t_max w_t cases_true_t-tau))}
+#'
+#' @inheritParams sample_Rt_single_piece
+#' @return a tibble with three columns: "Rt_piece_index", "draw_index", "Rt"
+#' @export
+sample_Rt <- function(cases_history_df,
+                      Rt_prior_parameters,
+                      serial_parameters,
+                      serial_max=40,
+                      ndraws=1) {
+  Rt_piece_indices <- unique(cases_history_df$Rt_index)
+  num_Rt_pieces <- length(Rt_piece_indices)
+  draw_indices <- seq(1, ndraws, 1)
+  m_draws <- matrix(nrow = num_Rt_pieces * ndraws,
+                    ncol = 3)
+  k <- 1
+  for(i in seq_along(Rt_piece_indices)) {
+    Rt_piece_index <- Rt_piece_indices[i]
+    Rt_vals <- sample_Rt_single_piece(
+      Rt_piece_index, cases_history_df,
+      Rt_prior_parameters, serial_parameters,
+      serial_max, ndraws)
+    for(j in 1:ndraws) {
+      m_draws[k, ] <- c(Rt_piece_index, j, Rt_vals[j])
+      k <- k + 1
+    }
+  }
+  colnames(m_draws) <- c("Rt_index", "draw_index", "Rt")
+  m_draws <- m_draws %>%
+    dplyr::as_tibble()
+  m_draws
 }

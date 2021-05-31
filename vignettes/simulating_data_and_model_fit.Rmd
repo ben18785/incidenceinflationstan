@@ -130,21 +130,31 @@ df_est %>%
 Sampling a value of Rt but assuming we know the true case history (and everything else).
 ```{r}
 cases_history_df <- df
-R0_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
-R0_index_lookup <- tibble(
-  time_onset=seq_along(R0_indices),
-  R0_index=R0_indices)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
 cases_history_df <- cases_history_df %>% 
-  left_join(R0_index_lookup, by = "time_onset") %>% 
-  select(time_onset, cases_true, R0_index) %>% 
+  left_join(Rt_index_lookup, by = "time_onset") %>% 
+  select(time_onset, cases_true, Rt_index) %>% 
   unique()
-R0_prior <- list(shape=5, rate=5)
-R0_vals <- sample_R0_single_piece(
+Rt_prior <- list(shape=5, rate=5)
+Rt_vals <- sample_Rt_single_piece(
   2, cases_history_df,
-  R0_prior, s_params,
+  Rt_prior, s_params,
   ndraws = 1000,
   serial_max = 20)
-hist(R0_vals)
+hist(Rt_vals)
+
+Rt_df <- sample_Rt(cases_history_df,
+  Rt_prior, s_params,
+  ndraws = 1000,
+  serial_max = 20)
+Rt_df %>%
+  right_join(Rt_index_lookup, by = "Rt_index") %>% 
+  ggplot(aes(x=time_onset,
+             y=Rt, group=as.factor(draw_index))) +
+  geom_line(alpha=0.1)
 ```
 
 
