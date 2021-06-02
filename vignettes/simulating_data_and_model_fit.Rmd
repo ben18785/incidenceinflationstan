@@ -130,26 +130,28 @@ df_est %>%
 Sampling a value of Rt but assuming we know the true case history (and everything else).
 ```{r}
 cases_history_df <- df
+
+# we split Rt up into intervals of duration 20 days
 Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
 Rt_index_lookup <- tibble(
   time_onset=seq_along(Rt_indices),
   Rt_index=Rt_indices)
+
 cases_history_df <- cases_history_df %>% 
   left_join(Rt_index_lookup, by = "time_onset") %>% 
   select(time_onset, cases_true, Rt_index) %>% 
   unique()
+
+# Prior on each Rt segment value
 Rt_prior <- list(shape=5, rate=5)
-Rt_vals <- sample_Rt_single_piece(
-  2, cases_history_df,
-  Rt_prior, s_params,
-  ndraws = 1000,
-  serial_max = 20)
-hist(Rt_vals)
 
 Rt_df <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
   ndraws = 1000,
   serial_max = 20)
+
+# graph posterior samples
 Rt_df %>%
   right_join(Rt_index_lookup, by = "Rt_index") %>% 
   ggplot(aes(x=time_onset,

@@ -184,29 +184,31 @@ test_that("sample_or_maximise_from_gamma returns either draws or maximum of
   expect_equal(val, (shape - 1) / rate)
 })
 
+# tests for sampling Rt
+days_total <- 100
+Rt_1 <- 1.5
+Rt_2 <- 1.0
+Rt_3 <- 1.3
+v_Rt <- c(rep(Rt_1, 40), rep(Rt_2, 20), rep(Rt_3, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+s_params <- list(mean=5, sd=3)
+r_params <- list(mean=10, sd=3)
+kappa <- 1000
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa) %>%
+  dplyr::select(time_onset, cases_true)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+df <- df %>%
+  left_join(Rt_index_lookup, by = "time_onset") %>%
+  select(time_onset, cases_true, Rt_index) %>%
+  unique()
+Rt_prior <- list(shape=1, rate=1)
+
 test_that("sample_Rt_single_piece returns reasonable values: these are
           basically functional tests", {
-  days_total <- 100
-  Rt_1 <- 1.5
-  Rt_2 <- 1.0
-  Rt_3 <- 1.3
-  v_Rt <- c(rep(Rt_1, 40), rep(Rt_2, 20), rep(Rt_3, 40))
-  Rt_function <- stats::approxfun(1:days_total, v_Rt)
-  s_params <- list(mean=5, sd=3)
-  r_params <- list(mean=10, sd=3)
-  kappa <- 1000
-  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
-                           kappa=kappa) %>%
-    dplyr::select(time_onset, cases_true)
-  Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
-  Rt_index_lookup <- tibble(
-    time_onset=seq_along(Rt_indices),
-    Rt_index=Rt_indices)
-  df <- df %>%
-    left_join(Rt_index_lookup, by = "time_onset") %>%
-    select(time_onset, cases_true, Rt_index) %>%
-    unique()
-  Rt_prior <- list(shape=1, rate=1)
 
   ndraws <- 42
   Rt_vals <- sample_Rt_single_piece(
@@ -246,7 +248,86 @@ test_that("sample_Rt_single_piece returns reasonable values: these are
     serial_max = 40)
   expect_true(abs(mean(Rt_vals) - prior_mean) < 0.2)
 
-  # look at columns returned
+  # test for maximisation
+  f_Rt <- function(i) sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = 1000,
+    serial_max = 20,
+    maximise = T)
+  expect_equal(length(f_Rt(1)), 1)
+  Rt_vals1 <- purrr::map_dbl(seq(1, 3, 1), f_Rt)
+  # no variation in maximum so should be no sd
+  expect_equal(sd(Rt_vals1), 0)
 
-  # add test for maximisation
+  # mode of sampling distribution should be close to max
+  mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  Rt_vals <- sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = 1000,
+    serial_max = 20)
+  expect_true(abs(mode(Rt_vals) - Rt_vals[1]) < 0.2)
+})
+
+test_that("sample_Rt returns sensible values", {
+  ndraws <- 300
+  Rt_df <- sample_Rt(df,
+                     Rt_prior, s_params,
+                     ndraws = ndraws,
+                     serial_max = 20)
+
+  # check shapes of outputs
+  cnames <- colnames(Rt_df)
+  expect_true(all.equal(cnames,
+                        c("Rt_index", "draw_index", "Rt")))
+  npieces <- max(df$Rt_index)
+  expect_equal(npieces * ndraws, nrow(Rt_df))
+
+  # check substance of outputs
+  f_Rt <- function(piece) {
+    val <- sample_Rt_single_piece(
+      piece, df,
+      Rt_prior, s_params,
+      ndraws = 1000,
+      serial_max = 20)
+    mean(val)
+  }
+  indices <- seq(1, 5, 1)
+  Rt_vals <- purrr::map_dbl(indices, f_Rt)
+  single_df <- dplyr::tibble(Rt_index=indices,
+                             Rt_single=Rt_vals)
+  Rt_df <- Rt_df %>%
+    dplyr::group_by(.data$Rt_index) %>%
+    dplyr::summarise(Rt=mean(Rt)) %>%
+    dplyr::left_join(single_df, by = "Rt_index") %>%
+    dplyr::mutate(diff=Rt-Rt_single)
+  expect_true(abs(sum(Rt_df$diff)) < 0.2)
+
+  # check maximisation
+  f_Rt <- function(piece) {
+    val <- sample_Rt_single_piece(
+      piece, df,
+      Rt_prior, s_params,
+      serial_max = 20,
+      maximise = T)
+    mean(val)
+  }
+  indices <- seq(1, 5, 1)
+  Rt_vals <- purrr::map_dbl(indices, f_Rt)
+  single_df <- dplyr::tibble(Rt_index=indices,
+                             Rt_single=Rt_vals)
+  Rt_df <- sample_Rt(df,
+                     Rt_prior, s_params,
+                     ndraws = ndraws,
+                     serial_max = 20,
+                     maximise = T)
+  expect_equal(nrow(Rt_df), max(df$Rt_index))
+  Rt_df <- Rt_df %>%
+    dplyr::left_join(single_df, by = "Rt_index") %>%
+    dplyr::mutate(diff=Rt-Rt_single)
+  expect_true(abs(sum(Rt_df$diff)) < 0.0001)
 })

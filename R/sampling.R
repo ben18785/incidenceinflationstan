@@ -130,7 +130,7 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
 #' @inheritParams sample_cases_history
 #' @param ndraws number of draws of Rt
 #'
-#' @return a draw for Rt
+#' @return a draw (or draws) for Rt
 #' @importFrom rlang .data
 sample_Rt_single_piece <- function(
     Rt_piece_index, cases_history_df,
@@ -207,6 +207,8 @@ sample_Rt <- function(cases_history_df,
                       maximise=FALSE) {
   Rt_piece_indices <- unique(cases_history_df$Rt_index)
   num_Rt_pieces <- length(Rt_piece_indices)
+  if(maximise)
+    ndraws <- 1
   draw_indices <- seq(1, ndraws, 1)
   m_draws <- matrix(nrow = num_Rt_pieces * ndraws,
                     ncol = 3)
