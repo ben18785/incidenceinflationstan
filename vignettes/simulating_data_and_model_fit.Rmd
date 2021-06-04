@@ -20,6 +20,7 @@ library(ggplot2)
 library(magrittr)
 library(dplyr)
 library(tidyr)
+library(purrr)
 ```
 
 We first generate a true case series using a negative binomial renewal process.
@@ -124,7 +125,10 @@ df_est %>%
   pivot_longer(c(cases_true, cases_estimated, cases_reported)) %>%
   ggplot(aes(x=time_onset, y=value, colour=as.factor(name))) +
   geom_line() +
-  scale_color_brewer("Series", palette = "Dark2")
+  scale_color_brewer("Series", palette = "Dark2") +
+  xlab("Onset time") +
+  ylab("Cases") +
+  theme(legend.position = c(0.6, 0.6))
 ```
 
 Sampling a value of Rt but assuming we know the true case history (and everything else).
@@ -151,13 +155,16 @@ Rt_df <- sample_Rt(cases_history_df,
   ndraws = 1000,
   serial_max = 20)
 
-# graph posterior samples
+# graph posterior samples vs actual Rt values
 Rt_df %>%
-  right_join(Rt_index_lookup, by = "Rt_index") %>% 
+  right_join(Rt_index_lookup, by = "Rt_index") %>%
+  mutate(type="estimated") %>% 
+  bind_rows(tibble(Rt=v_Rt, time_onset=seq(1, days_total, 1),
+                   type="actual")) %>% 
   ggplot(aes(x=time_onset,
              y=Rt, group=as.factor(draw_index))) +
-  geom_line(alpha=0.1)
+  geom_line(data=. %>% filter(type=="estimated"), alpha=0.1) +
+  geom_line(data=. %>% filter(type=="actual"), colour="orange") +
+  xlab("Onset time")
 ```
 
-
-Estimating the reporting parameters but assuming we know everything else.
