@@ -113,3 +113,33 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
                                    serial_parameters=serial_parameters)
   logp_observation + logp_state
 }
+
+#' Observation probability across all onset times
+#'
+#' @param observation_onset_with_true_cases_df a tibble with four columns:
+#' time_onset, time_reported, cases_reported, cases_true
+#' @inheritParams conditional_cases_logp
+#'
+#' @return a log probability
+#' @importFrom rlang .data
+observation_process_all_times_logp <- function(
+  observation_onset_with_true_cases_df,
+  reporting_parameters){
+
+  # TODO check that only one true case per onset time
+
+  logp <- 0
+  onset_times <- dplyr::n_distinct(observation_onset_with_true_cases_df$time_onset)
+  for(i in seq_along(onset_times)) {
+    onset_time <- onset_times[i]
+    short_df <- observation_onset_with_true_cases_df %>%
+      dplyr::filter(.data$time_onset==onset_time)
+    cases_true <- short_df$cases_true[1]
+    logp_new <- observation_process_logp(short_df,
+                                         cases_true=cases_true,
+                                         day_onset=onset_time,
+                                         reporting_parameters=reporting_parameters)
+    logp <- logp + logp_new
+  }
+  logp
+}
