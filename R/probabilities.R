@@ -116,26 +116,39 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
 
 #' Observation probability across all onset times
 #'
-#' @param observation_onset_with_true_cases_df a tibble with four columns:
+#' @param snapshot_with_true_cases_df a tibble with four columns:
 #' time_onset, time_reported, cases_reported, cases_true
 #' @inheritParams conditional_cases_logp
 #'
 #' @return a log probability
 #' @importFrom rlang .data
 observation_process_all_times_logp <- function(
-  observation_onset_with_true_cases_df,
+  snapshot_with_true_cases_df,
   reporting_parameters){
 
-  # TODO check that only one true case per onset time
-
   logp <- 0
-  onset_times <- dplyr::n_distinct(observation_onset_with_true_cases_df$time_onset)
+  onset_times <- unique(snapshot_with_true_cases_df$time_onset)
+
+  # check that only one true case per onset time
+  n_onset <- length(onset_times)
+  test_df <- snapshot_with_true_cases_df %>%
+    dplyr::select(.data$time_onset, .data$cases_true) %>%
+    unique()
+  if(n_onset != nrow(test_df))
+    stop("There must be only one true case measurement per each onset time.")
+
+  mu <- reporting_parameters$mean
+  sd <- reporting_parameters$sd
+  if(mu < 0 | sd < 0)
+    return(-Inf)
+
   for(i in seq_along(onset_times)) {
     onset_time <- onset_times[i]
-    short_df <- observation_onset_with_true_cases_df %>%
+    short_df <- snapshot_with_true_cases_df %>%
       dplyr::filter(.data$time_onset==onset_time)
     cases_true <- short_df$cases_true[1]
-    logp_new <- observation_process_logp(short_df,
+    if(nrow(short_df) > 1) # handling cases arising today which were reported today
+      logp_new <- observation_process_logp(short_df,
                                          cases_true=cases_true,
                                          day_onset=onset_time,
                                          reporting_parameters=reporting_parameters)

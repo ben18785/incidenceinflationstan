@@ -167,4 +167,16 @@ Rt_df %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time")
 ```
+Sample reporting parameters
+```{r}
+f_test <- function(mu) -observation_process_all_times_logp(df, list(mean=mu[1], sd=mu[2]))
+optim(c(8,4), f_test)
+
+met_step <- list(mean_step=0.25,
+                 sd_step=0.1)
+mcmc_test <- sample_reporting(df, list(mean=8, sd=4),
+                 met_step,
+                 maximise = T)
+mcmc_test
+```
 

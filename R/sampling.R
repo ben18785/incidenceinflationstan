@@ -229,3 +229,138 @@ sample_Rt <- function(cases_history_df,
     dplyr::as_tibble()
   m_draws
 }
+
+#' Propose new reporting parameters using normal kernel
+#' centered at current values
+#'
+#' @param current_reporting_parameters named list of 'mean' and 'sd' of gamma distribution
+#' characterising the reporting delay distribution
+#' @param metropolis_parameters named list of 'mean_step', 'sd_step' containing
+#' step sizes for Metropolis step
+#'
+#' @return list of reporting parameters
+propose_reporting_parameters <- function(
+  current_reporting_parameters,
+  metropolis_parameters) {
+  mean_now <- current_reporting_parameters$mean
+  sd_now <- current_reporting_parameters$sd
+  mean_stepsize <- metropolis_parameters$mean_step
+  sd_stepsize <- metropolis_parameters$sd_step
+  mean_proposed <- stats::rnorm(1, mean_now, mean_stepsize)
+  sd_proposed <- stats::rnorm(1, sd_now, sd_stepsize)
+  list(mean=mean_proposed, sd=sd_proposed)
+}
+
+#' Sample reporting parameters using a single Metropolis step
+#'
+#' @inheritParams observation_process_all_times_logp
+#' @inheritParams propose_reporting_parameters
+#'
+#' @return list of reporting parameters
+metropolis_step <- function(snapshot_with_true_cases_df,
+                            current_reporting_parameters,
+                            metropolis_parameters) {
+  proposed_reporting_parameters <- propose_reporting_parameters(
+    current_reporting_parameters,
+    metropolis_parameters)
+  logp_current <- observation_process_all_times_logp(
+    snapshot_with_true_cases_df=snapshot_with_true_cases_df,
+    reporting_parameters=current_reporting_parameters
+  )
+  logp_proposed <- observation_process_all_times_logp(
+    snapshot_with_true_cases_df=snapshot_with_true_cases_df,
+    reporting_parameters=proposed_reporting_parameters
+  )
+
+  log_r <- logp_proposed - logp_current
+  log_u <- log(runif(1))
+  if(log_r > log_u)
+    proposed_reporting_parameters
+  else
+    current_reporting_parameters
+}
+
+#' Sample reporting parameters using Metropolis MCMC
+#'
+#' @inheritParams metropolis_step
+#' @param ndraws number of iterates of the Markov chain to simulate
+#'
+#' @return a tibble with three columns: "draw_index", "mean", "sd"
+metropolis_steps <- function(
+  snapshot_with_true_cases_df,
+  current_reporting_parameters,
+  metropolis_parameters,
+  ndraws) {
+
+  m_reporting <- matrix(ncol = 3, nrow = ndraws)
+  reporting_parameters <- current_reporting_parameters
+  for(i in 1:ndraws) {
+    reporting_parameters <- metropolis_step(
+      snapshot_with_true_cases_df,
+      reporting_parameters,
+      metropolis_parameters
+    )
+    m_reporting[i, ] <- c(i,
+                          reporting_parameters$mean,
+                          reporting_parameters$sd)
+  }
+  colnames(m_reporting) <- c("draw_index", "mean", "sd")
+  m_reporting <- m_reporting %>%
+    dplyr::as_tibble()
+  m_reporting
+}
+
+#' Select reporting parameters by maximising log-probability
+#'
+#' @inheritParams metropolis_step
+#'
+#' @return a tibble with three columns: "draw_index", "mean, "sd"
+maximise_reporting_logp <- function(
+  snapshot_with_true_cases_df,
+  current_reporting_parameters) {
+
+  objective_function <- function(theta) {
+    -observation_process_all_times_logp(
+      snapshot_with_true_cases_df,
+      list(mean=theta[1], sd=theta[2]))
+  }
+
+  start_point <- c(current_reporting_parameters$mean,
+                   current_reporting_parameters$sd)
+  theta <- optim(start_point, objective_function)$par
+  reporting_parameters <- list(mean=theta[1],
+                               sd=theta[2])
+  tibble(draw_index=1,
+         mean=reporting_parameters$mean,
+         sd=reporting_parameters$sd)
+}
+
+#' Draw reporting parameter values either by sampling or by
+#' maximising
+#'
+#' @inheritParams metropolis_steps
+#' @param maximise if true choose reporting parameters by maximising
+#' log-probability; else (default) use Metropolis MCMC
+#' to draw parameters
+#'
+#' @return a tibble with three columns: "draw_index", "mean, "sd"
+#' @export
+sample_reporting <- function(
+  snapshot_with_true_cases_df,
+  current_reporting_parameters,
+  metropolis_parameters,
+  maximise=FALSE,
+  ndraws=1) {
+  if(maximise)
+    reporting_parameters <- maximise_reporting_logp(
+      snapshot_with_true_cases_df,
+      current_reporting_parameters)
+  else
+    reporting_parameters <- metropolis_steps(
+      snapshot_with_true_cases_df,
+      current_reporting_parameters,
+      metropolis_parameters,
+      ndraws=ndraws)
+
+  reporting_parameters
+}
