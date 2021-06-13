@@ -197,13 +197,13 @@ kappa <- 1000
 df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                          kappa=kappa) %>%
   dplyr::select(time_onset, cases_true)
-Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
-Rt_index_lookup <- tibble(
+Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+Rt_index_lookup <- dplyr::tibble(
   time_onset=seq_along(Rt_indices),
   Rt_index=Rt_indices)
 df <- df %>%
-  left_join(Rt_index_lookup, by = "time_onset") %>%
-  select(time_onset, cases_true, Rt_index) %>%
+  dplyr::left_join(Rt_index_lookup, by = "time_onset") %>%
+  dplyr::select(time_onset, cases_true, Rt_index) %>%
   unique()
 Rt_prior <- list(shape=1, rate=1)
 
@@ -330,4 +330,65 @@ test_that("sample_Rt returns sensible values", {
     dplyr::left_join(single_df, by = "Rt_index") %>%
     dplyr::mutate(diff=Rt-Rt_single)
   expect_true(abs(sum(Rt_df$diff)) < 0.0001)
+})
+
+test_that("propose_reporting_parameters works ok", {
+  r_params <- list(mean=4, sd=4)
+  met_params <- list(mean_step=0.1, sd_step=0.2)
+  r_params1 <- propose_reporting_parameters(
+    r_params, met_params)
+  expect_true(abs(r_params$mean - r_params1$mean) < 3)
+  expect_true(abs(r_params$sd - r_params1$sd) < 3)
+
+  met_params <- list(mean_step=0.000001, sd_step=0.2)
+  r_params1 <- propose_reporting_parameters(
+    r_params, met_params)
+  expect_true(abs(r_params$mean - r_params1$mean) < 0.1)
+})
+
+days_total <- 30
+df <- generate_snapshots(days_total, Rt_function,
+                         s_params, r_params,
+                         kappa=kappa, thinned=T)
+
+test_that("metropolis_step works as expected", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  r_params1 <- metropolis_step(df, r_params,
+                               met_params)
+  expect_true(abs(r_params1$mean - r_params$mean) < 0.2)
+  expect_true(abs(r_params1$sd - r_params$sd) < 0.2)
+})
+
+test_that("metropolis_steps returns multiple steps", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  ndraws <- 10
+  output <- metropolis_steps(df, r_params, met_params, ndraws)
+  expect_equal(nrow(output), ndraws)
+  expect_true(all.equal(colnames(output),
+                        c("draw_index", "mean", "sd")))
+})
+
+test_that("maximise_reporting_logp maximises prob", {
+  output <- maximise_reporting_logp(df, r_params)
+  expect_true(abs(output$mean - r_params$mean) < 0.4)
+  expect_true(abs(output$sd - r_params$sd) < 0.4)
+  expect_equal(nrow(output), 1)
+})
+
+test_that("sample_reporting produces output of correct shape", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  output <- sample_reporting(df, r_params, met_params)
+  expect_equal(nrow(output), 1)
+  expect_equal(max(output$draw_index), 1)
+
+  ndraws <- 2
+  output <- sample_reporting(df, r_params, met_params,
+                             ndraws=ndraws)
+  expect_equal(nrow(output), ndraws)
+  expect_equal(max(output$draw_index), ndraws)
+
+  output <- sample_reporting(df, r_params, met_params,
+                             maximise=T)
+  expect_equal(nrow(output), 1)
+  expect_equal(max(output$draw_index), 1)
 })

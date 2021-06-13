@@ -177,3 +177,23 @@ test_that("conditional_cases_logp works fine with vectorised true cases", {
                                                 reporting_parameters=reporting_parameters)
   expect_true(all.equal(logps, log_p_long_way))
 })
+
+days_total <- 100
+Rt_1 <- 1.5
+Rt_2 <- 1.0
+Rt_3 <- 1.3
+v_Rt <- c(rep(Rt_1, 40), rep(Rt_2, 20), rep(Rt_3, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+s_params <- list(mean=5, sd=3)
+r_params <- list(mean=10, sd=3)
+kappa <- 1000
+days_total <- 2
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa)
+
+test_that("observation_process_all_times_logp works ok", {
+  logp <- observation_process_all_times_logp(df, r_params)
+  df1 <- df %>% dplyr::filter(time_onset==1)
+  logp1 <- observation_process_logp(df1, df1$cases_true[1],
+                                    1,r_params)
+})
