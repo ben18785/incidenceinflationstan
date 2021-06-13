@@ -188,24 +188,47 @@ mcmc_test <- sample_reporting(df, list(mean=8, sd=4),
 mcmc_test
 ```
 
+# Real data
+Influenza-like illness in the US
 ```{r}
-ILI_2014 <- read.csv("../../../../Downloads/ili_2014.csv") %>% 
-  pivot_longer(-date_onset) %>% 
-  mutate(time_delay=gsub("X", "", name)) %>% 
-  mutate(time_delay=as.numeric(time_delay)) %>% 
-  rename(cases_reported=value) %>%
-  select(-name) %>% 
-  mutate(date_onset=as.Date(date_onset,
-                            format="%d/%m/%Y")) %>% 
-  mutate(time_onset=as.numeric(date_onset-first(date_onset)) / 7) %>%
-  mutate(time_reported=time_onset+time_delay) %>% 
-  select(date_onset, time_onset, time_reported, cases_reported)
-
 ILI_2014 %>% 
   mutate(time_delay=time_reported-time_onset) %>%
   ggplot(aes(x=time_onset, y=time_delay,
              fill=cases_reported)) +
   geom_tile() +
   scale_fill_distiller(direction=1)
+ILI_2014 %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported1=cases_reported[1],
+            cases_reported=sum(cases_reported, na.rm = T)) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line() +
+  geom_line(aes(y=cases_reported1))
 ```
+Get the data above for a longer time series
+using the DELPHI API
+
+Measles NL 2013-2014
+```{r}
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
+measles_NL_2013 %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported=sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line()
+
+# alternative view
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  group_by(time_onset) %>% 
+  summarise(time_delay=sum(time_delay * cases_reported) / sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=time_delay)) +
+  geom_line()
+```
+
 
