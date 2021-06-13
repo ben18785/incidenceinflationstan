@@ -26,3 +26,5 @@ Imports:
     matrixStats,
     rlang
 VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)

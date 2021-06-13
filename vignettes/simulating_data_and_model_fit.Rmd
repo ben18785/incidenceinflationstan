@@ -81,6 +81,7 @@ df %>%
   geom_line()
 ```
 
+
 Another way of understanding these data is that the historical snapshots of the epidemic change as time goes on and more cases are retroactively reported. We imagine we are at $t=40$ and consider how the history of cases changes as time goes on.
 ```{r}
 t <- 40
@@ -108,6 +109,16 @@ df %>%
   geom_point(aes(y=cases_true), colour="black") +
   geom_line(aes(y=cases_true), colour="black") +
   scale_colour_viridis_c(begin = 0.2)
+```
+These snapshots can alternatively be visualised using a so-called reporting trapezoid. Here, we draw this at reporting time $t=50$.
+```{r}
+df %>% 
+  filter(time_reported <= 50) %>% 
+  mutate(time_delay=time_reported-time_onset) %>% 
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
 ```
 
 Trying to estimate cases but assuming we now the Rt values over time, the reporting delay distribution and the serial delay distribution.
@@ -175,5 +186,26 @@ mcmc_test <- sample_reporting(df, list(mean=8, sd=4),
                  met_step,
                  maximise = T)
 mcmc_test
+```
+
+```{r}
+ILI_2014 <- read.csv("../../../../Downloads/ili_2014.csv") %>% 
+  pivot_longer(-date_onset) %>% 
+  mutate(time_delay=gsub("X", "", name)) %>% 
+  mutate(time_delay=as.numeric(time_delay)) %>% 
+  rename(cases_reported=value) %>%
+  select(-name) %>% 
+  mutate(date_onset=as.Date(date_onset,
+                            format="%d/%m/%Y")) %>% 
+  mutate(time_onset=as.numeric(date_onset-first(date_onset)) / 7) %>%
+  mutate(time_reported=time_onset+time_delay) %>% 
+  select(date_onset, time_onset, time_reported, cases_reported)
+
+ILI_2014 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
 ```
 
