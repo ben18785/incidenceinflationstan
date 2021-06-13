@@ -12,7 +12,8 @@ sample_true_cases_single_onset(
   day_onset,
   serial_parameters,
   reporting_parameters,
-  ndraws = 1
+  ndraws = 1,
+  maximise = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,9 @@ characterising the serial interval distribution}
 characterising the reporting delay distribution}
 
 \item{ndraws}{number of draws of cases}
+
+\item{maximise}{rather than sample a case count give the case count with the
+maximum probability (by default is FALSE)}
 }
 \value{
 a sampled case count arising on a given onset day

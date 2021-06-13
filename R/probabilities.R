@@ -147,12 +147,13 @@ observation_process_all_times_logp <- function(
     short_df <- snapshot_with_true_cases_df %>%
       dplyr::filter(.data$time_onset==onset_time)
     cases_true <- short_df$cases_true[1]
-    if(nrow(short_df) > 1) # handling cases arising today which were reported today
+    if(nrow(short_df) > 1) {# handling cases arising today which were reported today
       logp_new <- observation_process_logp(short_df,
                                          cases_true=cases_true,
                                          day_onset=onset_time,
                                          reporting_parameters=reporting_parameters)
-    logp <- logp + logp_new
+      logp <- logp + logp_new
+    }
   }
   logp
 }

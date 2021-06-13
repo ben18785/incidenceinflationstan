@@ -11,7 +11,8 @@ sample_Rt_single_piece(
   Rt_prior_parameters,
   serial_parameters,
   serial_max = 40,
-  ndraws = 1
+  ndraws = 1,
+  maximise = FALSE
 )
 }
 \arguments{
@@ -26,10 +27,15 @@ the gamma prior for Rt}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
+\item{serial_max}{maximum point at which to truncate sum in renewal process}
+
 \item{ndraws}{number of draws of Rt}
+
+\item{maximise}{rather than sample a case count give the case count with the
+maximum probability (by default is FALSE)}
 }
 \value{
-a draw for Rt
+a draw (or draws) for Rt
 }
 \description{
 Sample a single Rt value corresponding to a single piecewise-

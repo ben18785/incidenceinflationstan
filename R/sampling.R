@@ -129,6 +129,7 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
 #' the gamma prior for Rt
 #' @inheritParams sample_cases_history
 #' @param ndraws number of draws of Rt
+#' @inheritParams true_cases
 #'
 #' @return a draw (or draws) for Rt
 #' @importFrom rlang .data
@@ -154,23 +155,23 @@ sample_Rt_single_piece <- function(
   # (but they will be used as covariates)
   short_df <- short_df %>%
     dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
-    dplyr::mutate(is_observed_data=if_else(
-      (time_after_start > 0) & (Rt_index == Rt_piece_index), 1, 0))
+    dplyr::mutate(is_observed_data=dplyr::if_else(
+      (.data$time_after_start > 0) & (.data$Rt_index == Rt_piece_index), 1, 0))
   onset_times <- short_df %>%
-    dplyr::filter(is_observed_data == 1) %>%
-    dplyr::pull(time_onset)
+    dplyr::filter(.data$is_observed_data == 1) %>%
+    dplyr::pull(.data$time_onset)
 
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
     onset_time <- onset_times[i]
     true_cases <- short_df %>%
       dplyr::filter(.data$time_onset == onset_time) %>%
-      dplyr::pull(cases_true)
+      dplyr::pull(.data$cases_true)
     posterior_shape <- posterior_shape + true_cases
     cases_history <- short_df %>%
       dplyr::filter(.data$time_onset < onset_time) %>%
-      dplyr::arrange(desc(time_onset)) %>%
-      dplyr::pull(cases_true)
+      dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
+      dplyr::pull(.data$cases_true)
     cases_history <- cases_history[1:serial_max]
     posterior_rate <- posterior_rate + sum(w * cases_history)
   }
@@ -273,11 +274,13 @@ metropolis_step <- function(snapshot_with_true_cases_df,
   )
 
   log_r <- logp_proposed - logp_current
-  log_u <- log(runif(1))
+  log_u <- log(stats::runif(1))
+  # nocov start
   if(log_r > log_u)
     proposed_reporting_parameters
   else
     current_reporting_parameters
+  # nocov end
 }
 
 #' Sample reporting parameters using Metropolis MCMC
@@ -327,10 +330,10 @@ maximise_reporting_logp <- function(
 
   start_point <- c(current_reporting_parameters$mean,
                    current_reporting_parameters$sd)
-  theta <- optim(start_point, objective_function)$par
+  theta <- stats::optim(start_point, objective_function)$par
   reporting_parameters <- list(mean=theta[1],
                                sd=theta[2])
-  tibble(draw_index=1,
+  dplyr::tibble(draw_index=1,
          mean=reporting_parameters$mean,
          sd=reporting_parameters$sd)
 }

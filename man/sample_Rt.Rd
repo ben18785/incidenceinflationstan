@@ -9,7 +9,8 @@ sample_Rt(
   Rt_prior_parameters,
   serial_parameters,
   serial_max = 40,
-  ndraws = 1
+  ndraws = 1,
+  maximise = FALSE
 )
 }
 \arguments{
@@ -22,7 +23,12 @@ the gamma prior for Rt}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
+\item{serial_max}{maximum point at which to truncate sum in renewal process}
+
 \item{ndraws}{number of draws of Rt}
+
+\item{maximise}{rather than sample a case count give the case count with the
+maximum probability (by default is FALSE)}
 }
 \value{
 a tibble with three columns: "Rt_piece_index", "draw_index", "Rt"
@@ -39,4 +45,7 @@ times 'onset_time_set'. This means that the posterior for a single Rt value is g
 by:
 \deqn{Rt ~ gamma(alpha + \sum_{t in onset_time_set} cases_true_t,
       beta + \sum_{t in onset_time_set}\sum_tau=1^t_max w_t cases_true_t-tau))}
+This function either returns a draw (or draws if ndraws>1) from
+this posterior, or it returns the Rt set that maximises it
+(if maximise=TRUE).
 }
