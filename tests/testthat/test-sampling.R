@@ -75,6 +75,34 @@ test_that("sample_true_cases_single_onset produces reasonable case draws", {
     ndraws=20))
 })
 
+test_that("sample_true_cases_single_onset produces consistent maximum", {
+  observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
+                                      cases_reported=c(1, 1, 1))
+  reporting_parameters <- list(mean=5, sd=3)
+  max_cases <- 100
+  s_params <- list(mean=10, sd=1)
+  Rt <- 2
+  t_max <- 30
+  cases_history <- rep(4, t_max)
+  day_onset <- 0
+  max_observed_cases <- max(observation_matrix$cases_reported)
+  possible_cases <- max_observed_cases:max_cases
+  logps <- conditional_cases_logp(possible_cases, observation_matrix, cases_history,
+                                  Rt, day_onset, s_params, reporting_parameters)
+
+  map_val <- possible_cases[which.max(logps)]
+  case <- sample_true_cases_single_onset(
+    observation_df=observation_matrix,
+    cases_history=cases_history,
+    max_cases=max_cases,
+    Rt=Rt,
+    day_onset=day_onset,
+    serial_parameters=s_params,
+    reporting_parameters=reporting_parameters,
+    maximise=T)
+  expect_equal(case, map_val)
+})
+
 test_that("max_uncertain_days selects reasonable gamma distribution quanties", {
   r_params <- list(mean=7, sd=0.01)
   expect_equal(round(max_uncertain_days(0.5, r_params)), 7)
@@ -113,4 +141,254 @@ test_that("sample_cases_history adds cases_estimated that look reasonable", {
     dplyr::mutate(diff_true=cases_estimated-cases_true)
   expect_equal(sum(df_group$diff < 0), 0)
   expect_true(max(abs(df_group$diff_true)) < 300)
+})
+
+test_that("sample_cases_history yields a single case history when
+maximising", {
+  days_total <- 30
+  kappa <- 1000
+  r_params <- list(mean=10, sd=3)
+  v_Rt <- c(rep(1.5, 10), rep(0.4, 10), rep(1.5, 10))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  s_params <- list(mean=5, sd=3)
+  df <- generate_snapshots(days_total, Rt_function,
+                           s_params, r_params,
+                           kappa=kappa, thinned=T)
+  max_cases <- 5000
+  f_est <- function(i) {
+    df_est <- sample_cases_history(df, max_cases, Rt_function,
+                         s_params, r_params,
+                         maximise = T)
+    df_est$cases_estimated
+  }
+  cases <- purrr::map(seq(1, 4, 1), f_est)
+  expect_true(all.equal(cases[[1]], cases[[2]]))
+  expect_true(all.equal(cases[[2]], cases[[3]]))
+  expect_true(all.equal(cases[[3]], cases[[4]]))
+})
+
+test_that("sample_or_maximise_from_gamma returns either draws or maximum of
+          gamma", {
+  shape <- 5
+  rate <- 5
+  ndraws <- 1
+  val <- sample_or_maximise_gamma(shape, rate, ndraws)
+  expect_equal(length(val), ndraws)
+  ndraws <- 20
+  vals <- sample_or_maximise_gamma(shape, rate, ndraws)
+  expect_equal(length(vals), ndraws)
+
+  # maximise
+  val <- sample_or_maximise_gamma(shape, rate, ndraws,
+                                  maximise=T)
+  expect_equal(val, (shape - 1) / rate)
+})
+
+# tests for sampling Rt
+days_total <- 100
+Rt_1 <- 1.5
+Rt_2 <- 1.0
+Rt_3 <- 1.3
+v_Rt <- c(rep(Rt_1, 40), rep(Rt_2, 20), rep(Rt_3, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+s_params <- list(mean=5, sd=3)
+r_params <- list(mean=10, sd=3)
+kappa <- 1000
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa) %>%
+  dplyr::select(time_onset, cases_true)
+Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+Rt_index_lookup <- dplyr::tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+df <- df %>%
+  dplyr::left_join(Rt_index_lookup, by = "time_onset") %>%
+  dplyr::select(time_onset, cases_true, Rt_index) %>%
+  unique()
+Rt_prior <- list(shape=1, rate=1)
+
+test_that("sample_Rt_single_piece returns reasonable values: these are
+          basically functional tests", {
+
+  ndraws <- 42
+  Rt_vals <- sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = ndraws,
+    serial_max = 20)
+  expect_equal(ndraws, length(Rt_vals))
+
+  f_Rt <- function(piece) {
+    sample_Rt_single_piece(
+      piece, df,
+      Rt_prior, s_params,
+      ndraws = 1000,
+      serial_max = 20)
+  }
+  # too few data so returns prior draws
+  Rt_vals <- f_Rt(1)
+  prior_mean <- Rt_prior$shape / Rt_prior$rate
+  expect_true(abs(mean(Rt_vals) - prior_mean) < 0.2)
+
+  Rt_vals <- f_Rt(2)
+  expect_true(abs(mean(Rt_vals) - Rt_1) < 0.2)
+  Rt_vals <- f_Rt(3)
+  expect_true(abs(mean(Rt_vals) - Rt_2) < 0.2)
+  Rt_vals <- f_Rt(4)
+  expect_true(abs(mean(Rt_vals) - Rt_3) < 0.2)
+  Rt_vals <- f_Rt(5)
+  expect_true(abs(mean(Rt_vals) - Rt_3) < 0.2)
+
+  # increase serial_max so that more data points are
+  # discarded: resulting in prior draws
+  Rt_vals <- sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = 1000,
+    serial_max = 40)
+  expect_true(abs(mean(Rt_vals) - prior_mean) < 0.2)
+
+  # test for maximisation
+  f_Rt <- function(i) sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = 1000,
+    serial_max = 20,
+    maximise = T)
+  expect_equal(length(f_Rt(1)), 1)
+  Rt_vals1 <- purrr::map_dbl(seq(1, 3, 1), f_Rt)
+  # no variation in maximum so should be no sd
+  expect_equal(sd(Rt_vals1), 0)
+
+  # mode of sampling distribution should be close to max
+  mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  Rt_vals <- sample_Rt_single_piece(
+    2, df,
+    Rt_prior, s_params,
+    ndraws = 1000,
+    serial_max = 20)
+  expect_true(abs(mode(Rt_vals) - Rt_vals[1]) < 0.2)
+})
+
+test_that("sample_Rt returns sensible values", {
+  ndraws <- 300
+  Rt_df <- sample_Rt(df,
+                     Rt_prior, s_params,
+                     ndraws = ndraws,
+                     serial_max = 20)
+
+  # check shapes of outputs
+  cnames <- colnames(Rt_df)
+  expect_true(all.equal(cnames,
+                        c("Rt_index", "draw_index", "Rt")))
+  npieces <- max(df$Rt_index)
+  expect_equal(npieces * ndraws, nrow(Rt_df))
+
+  # check substance of outputs
+  f_Rt <- function(piece) {
+    val <- sample_Rt_single_piece(
+      piece, df,
+      Rt_prior, s_params,
+      ndraws = 1000,
+      serial_max = 20)
+    mean(val)
+  }
+  indices <- seq(1, 5, 1)
+  Rt_vals <- purrr::map_dbl(indices, f_Rt)
+  single_df <- dplyr::tibble(Rt_index=indices,
+                             Rt_single=Rt_vals)
+  Rt_df <- Rt_df %>%
+    dplyr::group_by(.data$Rt_index) %>%
+    dplyr::summarise(Rt=mean(Rt)) %>%
+    dplyr::left_join(single_df, by = "Rt_index") %>%
+    dplyr::mutate(diff=Rt-Rt_single)
+  expect_true(abs(sum(Rt_df$diff)) < 0.2)
+
+  # check maximisation
+  f_Rt <- function(piece) {
+    val <- sample_Rt_single_piece(
+      piece, df,
+      Rt_prior, s_params,
+      serial_max = 20,
+      maximise = T)
+    mean(val)
+  }
+  indices <- seq(1, 5, 1)
+  Rt_vals <- purrr::map_dbl(indices, f_Rt)
+  single_df <- dplyr::tibble(Rt_index=indices,
+                             Rt_single=Rt_vals)
+  Rt_df <- sample_Rt(df,
+                     Rt_prior, s_params,
+                     ndraws = ndraws,
+                     serial_max = 20,
+                     maximise = T)
+  expect_equal(nrow(Rt_df), max(df$Rt_index))
+  Rt_df <- Rt_df %>%
+    dplyr::left_join(single_df, by = "Rt_index") %>%
+    dplyr::mutate(diff=Rt-Rt_single)
+  expect_true(abs(sum(Rt_df$diff)) < 0.0001)
+})
+
+test_that("propose_reporting_parameters works ok", {
+  r_params <- list(mean=4, sd=4)
+  met_params <- list(mean_step=0.1, sd_step=0.2)
+  r_params1 <- propose_reporting_parameters(
+    r_params, met_params)
+  expect_true(abs(r_params$mean - r_params1$mean) < 3)
+  expect_true(abs(r_params$sd - r_params1$sd) < 3)
+
+  met_params <- list(mean_step=0.000001, sd_step=0.2)
+  r_params1 <- propose_reporting_parameters(
+    r_params, met_params)
+  expect_true(abs(r_params$mean - r_params1$mean) < 0.1)
+})
+
+days_total <- 30
+df <- generate_snapshots(days_total, Rt_function,
+                         s_params, r_params,
+                         kappa=kappa, thinned=T)
+
+test_that("metropolis_step works as expected", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  r_params1 <- metropolis_step(df, r_params,
+                               met_params)
+  expect_true(abs(r_params1$mean - r_params$mean) < 0.2)
+  expect_true(abs(r_params1$sd - r_params$sd) < 0.2)
+})
+
+test_that("metropolis_steps returns multiple steps", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  ndraws <- 10
+  output <- metropolis_steps(df, r_params, met_params, ndraws)
+  expect_equal(nrow(output), ndraws)
+  expect_true(all.equal(colnames(output),
+                        c("draw_index", "mean", "sd")))
+})
+
+test_that("maximise_reporting_logp maximises prob", {
+  output <- maximise_reporting_logp(df, r_params)
+  expect_true(abs(output$mean - r_params$mean) < 0.4)
+  expect_true(abs(output$sd - r_params$sd) < 0.4)
+  expect_equal(nrow(output), 1)
+})
+
+test_that("sample_reporting produces output of correct shape", {
+  met_params <- list(mean_step=0.01, sd_step=0.01)
+  output <- sample_reporting(df, r_params, met_params)
+  expect_equal(nrow(output), 1)
+  expect_equal(max(output$draw_index), 1)
+
+  ndraws <- 2
+  output <- sample_reporting(df, r_params, met_params,
+                             ndraws=ndraws)
+  expect_equal(nrow(output), ndraws)
+  expect_equal(max(output$draw_index), ndraws)
+
+  output <- sample_reporting(df, r_params, met_params,
+                             maximise=T)
+  expect_equal(nrow(output), 1)
+  expect_equal(max(output$draw_index), 1)
 })

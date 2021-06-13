@@ -10,7 +10,8 @@ sample_cases_history(
   Rt_function,
   serial_parameters,
   reporting_parameters,
-  p_gamma_cutoff = 0.99
+  p_gamma_cutoff = 0.99,
+  maximise = FALSE
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ characterising the reporting delay distribution}
 
 \item{p_gamma_cutoff}{a p value (0 <= p <= 1) indicating the threshold above which
 we deem certainty}
+
+\item{maximise}{rather than sample a case count give the case count with the
+maximum probability (by default is FALSE)}
 }
 \value{
 a tibble with an extra cases_estimated column
