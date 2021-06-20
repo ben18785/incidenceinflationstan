@@ -178,6 +178,8 @@ Rt_df %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time")
 ```
+
+
 Sample reporting parameters: here, we use maximisation
 ```{r}
 met_step <- list(mean_step=0.25,
@@ -229,6 +231,25 @@ measles_NL_2013 %>%
   summarise(time_delay=sum(time_delay * cases_reported) / sum(cases_reported)) %>% 
   ggplot(aes(x=time_onset, y=time_delay)) +
   geom_line()
+```
+
+```{r}
+snapshot_with_Rt_index_df <- df
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.5,
+                      2, 1.5,
+                      3, 0.4,
+                      4, 1.5,
+                      5, 1.5)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
 ```
 
 

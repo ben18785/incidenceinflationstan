@@ -367,3 +367,62 @@ sample_reporting <- function(
 
   reporting_parameters
 }
+
+#' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
+#'
+#' @param snapshot_with_Rt_index_df a tibble with
+#' four columns: time_onset, time_reported, cases_reported, Rt_index
+#' @inheritParams sample_Rt_single_piece
+#' @param reporting_metropolis_parameters named list of 'mean_step', 'sd_step' containing
+#' step sizes for Metropolis step
+#' @param maximise whether to estimate MAP values of parameters (if true) or
+#' sample parameter values using MCMC (if false). By default this is false.
+#' @param initial_cases_true initial guess of true case counts, provided by a
+#' tibble with two columns: 'time_onset', 'cases_true'
+#' @param initial_reporting_parameters a list with two named elements: 'mean', 'sd'
+#' indicating an initial guess of the mean and sd of the reporting delay distribution
+#' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
+#' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
+#' @return
+#' @export
+mcmc <- function(
+  niterations,
+  snapshot_with_Rt_index_df,
+  Rt_prior_parameters,
+  serial_parameters,
+  initial_cases_true,
+  initial_reporting_parameters,
+  initial_Rt,
+  reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+  serial_max=40,
+  max_cases,
+  maximise=FALSE) {
+  cnames <- colnames(snapshot_with_Rt_index_df)
+  expected_names <- c("time_onset", "time_reported",
+                      "cases_reported", "Rt_index")
+  if(sum(cnames %in% expected_names) != 4)
+    stop("Incorrect column names in snapshot_with_Rt_index_df")
+  if(length(cnames) != 4)
+    stop("There should be only four columns in snapshot_with_Rt_index_df:
+          time_onset, time_reported, cases_reported, Rt_index")
+
+  df_running <- snapshot_with_Rt_index_df %>%
+    dplyr::left_join(initial_cases_true, by = "time_onset") %>%
+    dplyr::left_join(initial_Rt, by = "Rt_index")
+  reporting_current <- initial_reporting_parameters
+
+  for(i in 1:niterations) {
+    Rt_current <- df_running %>%
+      dplyr::select(time_onset, Rt) %>%
+      unique()
+    Rt_function <- approxfun(Rt_current$time_onset,
+                             Rt_current$Rt)
+    df_current <- df_running %>%
+      dplyr::select(time_onset, time_reported, cases_reported)
+    df_temp <- sample_cases_history(
+    df_current, max_cases,
+    Rt_function, serial_parameters, reporting_current,
+    p_gamma_cutoff=p_gamma_cutoff,
+    maximise=maximise)
+  }
+}
