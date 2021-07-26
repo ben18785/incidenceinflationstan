@@ -250,6 +250,15 @@ Rt_index_lookup <- tibble(
   Rt_index=Rt_indices)
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
   left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(mean=5, sd=3)
+serial_parameters <- list(mean=5, sd=3)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=5,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=5000)
 ```
 
 
