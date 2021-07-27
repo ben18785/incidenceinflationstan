@@ -370,7 +370,10 @@ df <- generate_snapshots(days_total, Rt_function,
 
 test_that("metropolis_step works as expected", {
   met_params <- list(mean_step=0.01, sd_step=0.01)
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
   r_params1 <- metropolis_step(df, r_params,
+                               prior_params,
                                met_params)
   expect_true(abs(r_params1$mean - r_params$mean) < 0.2)
   expect_true(abs(r_params1$sd - r_params$sd) < 0.2)
@@ -386,25 +389,29 @@ test_that("metropolis_steps returns multiple steps", {
 })
 
 test_that("maximise_reporting_logp maximises prob", {
-  output <- maximise_reporting_logp(df, r_params)
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
+  output <- maximise_reporting_logp(df, r_params, prior_params)
   expect_true(abs(output$mean - r_params$mean) < 0.4)
   expect_true(abs(output$sd - r_params$sd) < 0.4)
   expect_equal(nrow(output), 1)
 })
 
 test_that("sample_reporting produces output of correct shape", {
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
   met_params <- list(mean_step=0.01, sd_step=0.01)
-  output <- sample_reporting(df, r_params, met_params)
+  output <- sample_reporting(df, r_params, prior_params, met_params)
   expect_equal(nrow(output), 1)
   expect_equal(max(output$draw_index), 1)
 
   ndraws <- 2
-  output <- sample_reporting(df, r_params, met_params,
+  output <- sample_reporting(df, r_params, prior_params, met_params,
                              ndraws=ndraws)
   expect_equal(nrow(output), ndraws)
   expect_equal(max(output$draw_index), ndraws)
 
-  output <- sample_reporting(df, r_params, met_params,
+  output <- sample_reporting(df, r_params, prior_params, met_params,
                              maximise=T)
   expect_equal(nrow(output), 1)
   expect_equal(max(output$draw_index), 1)

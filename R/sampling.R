@@ -263,16 +263,16 @@ propose_reporting_parameters <- function(
 #' @return a log-probability density
 prior_reporting_parameters <- function(
   current_reporting_parameters,
-  prior_params) {
+  prior_parameters) {
   mean <- current_reporting_parameters$mean
   sd <- current_reporting_parameters$sd
   logp_mean <- dgamma_mean_sd(mean,
-                              prior_params$mean_mu,
-                              prior_params$mean_sigma,
+                              prior_parameters$mean_mu,
+                              prior_parameters$mean_sigma,
                               log=TRUE)
   logp_sigma <- dgamma_mean_sd(sd,
-                               prior_params$sd_mu,
-                               prior_params$sd_sigma,
+                               prior_parameters$sd_mu,
+                               prior_parameters$sd_sigma,
                                log=TRUE)
   logp_mean + logp_sigma
 }
@@ -282,11 +282,12 @@ prior_reporting_parameters <- function(
 #'
 #' @inheritParams observation_process_all_times_logp
 #' @inheritParams propose_reporting_parameters
+#' @inheritParams prior_reporting_parameters
 #'
 #' @return list of reporting parameters
 metropolis_step <- function(snapshot_with_true_cases_df,
                             current_reporting_parameters,
-                            prior,
+                            prior_parameters,
                             metropolis_parameters) {
   proposed_reporting_parameters <- propose_reporting_parameters(
     current_reporting_parameters,
@@ -294,11 +295,13 @@ metropolis_step <- function(snapshot_with_true_cases_df,
   logp_current <- observation_process_all_times_logp(
     snapshot_with_true_cases_df=snapshot_with_true_cases_df,
     reporting_parameters=current_reporting_parameters
-  )
+  ) + prior_reporting_parameters(current_reporting_parameters,
+                                 prior_parameters)
   logp_proposed <- observation_process_all_times_logp(
     snapshot_with_true_cases_df=snapshot_with_true_cases_df,
     reporting_parameters=proposed_reporting_parameters
-  )
+  ) + prior_reporting_parameters(proposed_reporting_parameters,
+                                 prior_parameters)
 
   log_r <- logp_proposed - logp_current
   log_u <- log(stats::runif(1))
@@ -319,6 +322,7 @@ metropolis_step <- function(snapshot_with_true_cases_df,
 metropolis_steps <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  prior_parameters,
   metropolis_parameters,
   ndraws) {
 
@@ -328,6 +332,7 @@ metropolis_steps <- function(
     reporting_parameters <- metropolis_step(
       snapshot_with_true_cases_df,
       reporting_parameters,
+      prior_parameters,
       metropolis_parameters
     )
     m_reporting[i, ] <- c(i,
@@ -347,12 +352,16 @@ metropolis_steps <- function(
 #' @return a tibble with three columns: "draw_index", "mean, "sd"
 maximise_reporting_logp <- function(
   snapshot_with_true_cases_df,
-  current_reporting_parameters) {
+  current_reporting_parameters,
+  prior_parameters) {
 
   objective_function <- function(theta) {
     -observation_process_all_times_logp(
       snapshot_with_true_cases_df,
-      list(mean=theta[1], sd=theta[2]))
+      list(mean=theta[1], sd=theta[2])) +
+      prior_reporting_parameters(
+        list(mean=theta[1], sd=theta[2]),
+        prior_parameters)
   }
 
   start_point <- c(current_reporting_parameters$mean,
@@ -378,17 +387,20 @@ maximise_reporting_logp <- function(
 sample_reporting <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  prior_parameters,
   metropolis_parameters,
   maximise=FALSE,
   ndraws=1) {
   if(maximise)
     reporting_parameters <- maximise_reporting_logp(
       snapshot_with_true_cases_df,
-      current_reporting_parameters)
+      current_reporting_parameters,
+      prior_parameters)
   else
     reporting_parameters <- metropolis_steps(
       snapshot_with_true_cases_df,
       current_reporting_parameters,
+      prior_parameters,
       metropolis_parameters,
       ndraws=ndraws)
 
