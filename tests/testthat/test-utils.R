@@ -34,6 +34,19 @@ test_that("qgamma_mean_sd produces reasonable inverse", {
   expect_equal(peak, 5)
 })
 
+test_that("dgamma_mean_sd produces reasonable values", {
+  mu <- 5
+  sd <- 0.1
+  x <- seq(1, 20, 1)
+  max_ind <- which.max(dgamma_mean_sd(x, mu, sd))
+  expect_equal(max_ind, 5)
+
+  x <- 3
+  val <- dgamma_mean_sd(x, mu, sd)
+  log_val <- dgamma_mean_sd(x, mu, sd, log=TRUE)
+  expect_equal(log(val), log_val)
+})
+
 test_that("gamma_discrete_pmf sums near to 1", {
   x <- seq(0, 10000, 1)
   reporting_parameters <- list(mean=1, sd=1)

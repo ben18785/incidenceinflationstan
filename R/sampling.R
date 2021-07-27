@@ -252,6 +252,32 @@ propose_reporting_parameters <- function(
   list(mean=mean_proposed, sd=sd_proposed)
 }
 
+#' Gamma prior for reporting parameters
+#'
+#' @inheritParams propose_reporting_parameters
+#' @param prior_params is a named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
+#' 'sd_sigma' representing the gamma prior parameters for the mean and sd
+#' parameters of the reporting parameters (itself described by a gamma
+#' distribution)
+#'
+#' @return a log-probability density
+prior_reporting_parameters <- function(
+  current_reporting_parameters,
+  prior_params) {
+  mean <- current_reporting_parameters$mean
+  sd <- current_reporting_parameters$sd
+  logp_mean <- dgamma_mean_sd(mean,
+                              prior_params$mean_mu,
+                              prior_params$mean_sigma,
+                              log=TRUE)
+  logp_sigma <- dgamma_mean_sd(sd,
+                               prior_params$sd_mu,
+                               prior_params$sd_sigma,
+                               log=TRUE)
+  logp_mean + logp_sigma
+}
+
+
 #' Sample reporting parameters using a single Metropolis step
 #'
 #' @inheritParams observation_process_all_times_logp
@@ -260,6 +286,7 @@ propose_reporting_parameters <- function(
 #' @return list of reporting parameters
 metropolis_step <- function(snapshot_with_true_cases_df,
                             current_reporting_parameters,
+                            prior,
                             metropolis_parameters) {
   proposed_reporting_parameters <- propose_reporting_parameters(
     current_reporting_parameters,

@@ -332,6 +332,23 @@ test_that("sample_Rt returns sensible values", {
   expect_true(abs(sum(Rt_df$diff)) < 0.0001)
 })
 
+test_that("prior_reporting_parameters works ok", {
+  current_reporting_parameters <- list(mean=3, sd=2)
+  prior_params <- list(mean_mu=3, mean_sigma=2,
+                       sd_mu=5, sd_sigma=1)
+  val <- prior_reporting_parameters(current_reporting_parameters,
+                                    prior_params)
+  val1 <- dgamma_mean_sd(current_reporting_parameters$mean,
+                         prior_params$mean_mu,
+                         prior_params$mean_sigma,
+                         log=TRUE)
+  val2 <- dgamma_mean_sd(current_reporting_parameters$sd,
+                         prior_params$sd_mu,
+                         prior_params$sd_sigma,
+                         log=TRUE)
+  expect_equal(val, val1 + val2)
+})
+
 test_that("propose_reporting_parameters works ok", {
   r_params <- list(mean=4, sd=4)
   met_params <- list(mean_step=0.1, sd_step=0.2)
