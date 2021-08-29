@@ -255,7 +255,7 @@ propose_reporting_parameters <- function(
 #' Gamma prior for reporting parameters
 #'
 #' @inheritParams propose_reporting_parameters
-#' @param prior_params is a named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
+#' @param prior_parameters named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 #' 'sd_sigma' representing the gamma prior parameters for the mean and sd
 #' parameters of the reporting parameters (itself described by a gamma
 #' distribution)

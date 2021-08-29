@@ -382,7 +382,14 @@ test_that("metropolis_step works as expected", {
 test_that("metropolis_steps returns multiple steps", {
   met_params <- list(mean_step=0.01, sd_step=0.01)
   ndraws <- 10
-  output <- metropolis_steps(df, r_params, met_params, ndraws)
+  rep_prior_params <- list(mean_mu=5, sd_mu=3,
+                           mean_sigma=5, sd_sigma=3)
+  output <- metropolis_steps(
+    snapshot_with_true_cases_df=df,
+    current_reporting_parameters=r_params,
+    prior_parameters=rep_prior_params,
+    metropolis_parameters=met_params,
+    ndraws=ndraws)
   expect_equal(nrow(output), ndraws)
   expect_true(all.equal(colnames(output),
                         c("draw_index", "mean", "sd")))

@@ -9,7 +9,6 @@ mcmc(
   snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
-  initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
   reporting_metropolis_parameters = list(mean_step = 0.25, sd_step = 0.1),
@@ -25,9 +24,9 @@ mcmc(
 four columns: time_onset, time_reported, cases_reported, Rt_index}
 
 \item{priors}{a named list with: 'Rt', 'reporting', 'max_cases'. These take
-the form: 'Rt' comprises a named list with elements 'shape' and 'rate' describing
+the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
 the gamma prior for each Rt; 'reporting' is a named list with elements
-'mean_shape', 'mean_rate', 'sd_shape', 'sd_rate' representing the gamma
+'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the gamma
 prior parameters for the mean and sd parameters of the reporting parameters
 (itself described by a gamma distribution); max cases controls the upper
 limit of the discrete uniform distribution representing the prior on true
@@ -35,9 +34,6 @@ cases}
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
-
-\item{initial_cases_true}{initial guess of true case counts, provided by a
-tibble with two columns: 'time_onset', 'cases_true'}
 
 \item{initial_reporting_parameters}{a list with two named elements: 'mean', 'sd'
 indicating an initial guess of the mean and sd of the reporting delay distribution}
