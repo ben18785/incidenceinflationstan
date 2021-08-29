@@ -455,6 +455,14 @@ mcmc <- function(
     dplyr::left_join(initial_Rt, by = "Rt_index")
   reporting_current <- initial_reporting_parameters
 
+  reporting_samples <- matrix(ncol = 3,
+                              nrow = niterations)
+  num_Rts <- nrow(initial_Rt)
+  Rt_samples <- matrix(nrow = num_Rts * niterations,
+                       ncol = 3)
+  num_cases_true <- unique(df_running$time_onset)
+
+  k <- 1
   for(i in 1:niterations) {
 
     # sample incidence
@@ -479,14 +487,58 @@ mcmc <- function(
       dplyr::select(-c("cases_reported", "time_reported")) %>%
       dplyr::rename(cases_true=cases_estimated) %>%
       unique()
+
     df_Rt <- sample_Rt(cases_history_df,
                        priors$Rt,
                        serial_parameters,
                        serial_max,
                        ndraws=1,
                        maximise=maximise)
+    if(nrow(df_Rt) != num_Rts)
+      stop("Number of Rts outputted not equal to initial Rt dims.")
+    # store Rts
+    for(j in 1:num_Rts) {
+      Rt_index <- df_Rt$Rt_index[j]
+      Rt_temp <- df_Rt$Rt[j]
+      Rt_samples[k, ] <- c(i, Rt_index, Rt_temp)
+      k <- k + 1
+    }
 
     # sample reporting parameters
+    df_temp <- df_temp %>%
+      dplyr::rename(cases_true=cases_estimated)
+    reporting_temp <- sample_reporting(
+      snapshot_with_true_cases_df=df_temp,
+      current_reporting_parameters=reporting_current,
+      prior_parameters=priors$reporting,
+      metropolis_parameters=reporting_metropolis_parameters,
+      maximise=maximise,
+      ndraws=1)
+    reporting_temp$draw_index <- NULL
+    reporting_current <- reporting_temp
+    reporting_samples[i, ] <- c(i,
+                                reporting_current$mean,
+                                reporting_current$sd)
 
+    # update main df used in sampling
+    df_running <- df_temp %>%
+      dplyr::select(-cases_true) %>%
+      dplyr::left_join(cases_history_df, by = "time_onset") %>%
+      dplyr::left_join(df_Rt, by = "Rt_index") %>%
+      dplyr::select(-draw_index)
+
+    # store cases
+    cases_history_df <- cases_history_df %>%
+      dplyr::select(-Rt_index) %>%
+      dplyr::mutate(iteration=i)
+    if(i == 1) {
+      cases_history_samples <- cases_history_df
+    } else {
+      cases_history_samples <- cases_history_samples %>%
+        dplyr::bind_rows(cases_history_df)
+    }
   }
+  list(cases=cases_history_samples,
+       Rt=Rt_samples,
+       reporting=reporting_samples)
 }
