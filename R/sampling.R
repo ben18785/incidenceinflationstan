@@ -438,7 +438,7 @@ mcmc <- function(
   initial_reporting_parameters,
   initial_Rt,
   reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE) {
+  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
                       "cases_reported", "Rt_index")
@@ -462,8 +462,23 @@ mcmc <- function(
                        ncol = 3)
   num_cases_true <- unique(df_running$time_onset)
 
+  if(print_to_screen) {
+    progress_bar <- txtProgressBar(
+      min = 0,
+      max = niterations,
+      style = 3,
+      width = niterations, # Needed to avoid multiple printings
+      char = "=")
+
+    init <- numeric(niterations)
+    end <- numeric(niterations)
+  }
+
   k <- 1
   for(i in 1:niterations) {
+
+    if(print_to_screen)
+      init[i] <- Sys.time()
 
     # sample incidence
     Rt_current <- df_running %>%
@@ -537,7 +552,29 @@ mcmc <- function(
       cases_history_samples <- cases_history_samples %>%
         dplyr::bind_rows(cases_history_df)
     }
+
+    if(print_to_screen) {
+      end[i] <- Sys.time()
+      setTxtProgressBar(progress_bar, i)
+      time <- round(lubridate::seconds_to_period(sum(end - init)), 0)
+
+      # Estimated remaining time based on the
+      # mean time that took to run the previous iterations
+      est <- niterations * (mean(end[end != 0] - init[init != 0])) - time
+      remaining <- round(lubridate::seconds_to_period(est), 0)
+
+      cat(paste(" // Execution time:", tolower(as.character(time)),
+                " // Estimated time remaining:", tolower(as.character(remaining))), "")
+    }
   }
+
+  Rt_samples <- Rt_samples %>%
+    as.data.frame()
+  colnames(Rt_samples) <- c("iteration", "Rt_index", "Rt")
+  reporting_samples <- reporting_samples %>%
+    as.data.frame()
+  colnames(reporting_samples) <- c("iteration", "mean", "sd")
+
   list(cases=cases_history_samples,
        Rt=Rt_samples,
        reporting=reporting_samples)

@@ -261,6 +261,7 @@ thin_single_series <- function(case_obs_single) {
 #'
 #' @return a thinned tibble
 #' @importFrom magrittr "%>%"
+#' @export
 thin_series <- function(case_obs) {
   onset_times <- unique(case_obs$time_onset)
   for(i in seq_along(onset_times)) {
