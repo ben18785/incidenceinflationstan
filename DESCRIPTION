@@ -11,7 +11,7 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
 Suggests: 
     knitr,
     rmarkdown,
@@ -24,5 +24,8 @@ Imports:
     magrittr,
     tidyr,
     matrixStats,
-    rlang
+    rlang,
+    lubridate
 VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)

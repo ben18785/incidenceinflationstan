@@ -81,6 +81,7 @@ df %>%
   geom_line()
 ```
 
+
 Another way of understanding these data is that the historical snapshots of the epidemic change as time goes on and more cases are retroactively reported. We imagine we are at $t=40$ and consider how the history of cases changes as time goes on.
 ```{r}
 t <- 40
@@ -109,8 +110,18 @@ df %>%
   geom_line(aes(y=cases_true), colour="black") +
   scale_colour_viridis_c(begin = 0.2)
 ```
+These snapshots can alternatively be visualised using a so-called reporting trapezoid. Here, we draw this at reporting time $t=50$.
+```{r}
+df %>% 
+  filter(time_reported <= 50) %>% 
+  mutate(time_delay=time_reported-time_onset) %>% 
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
+```
 
-Trying to estimate cases but assuming we now the Rt values over time, the reporting delay distribution and the serial delay distribution.
+Trying to estimate cases but assuming we know the Rt values over time, the reporting delay distribution and the serial delay distribution.
 ```{r}
 days_total <- 100
 kappa <- 1000
@@ -167,13 +178,188 @@ Rt_df %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time")
 ```
-Sample reporting parameters: here, we use maximisation
+
+# Inference on simulated data
+
 ```{r}
-met_step <- list(mean_step=0.25,
-                 sd_step=0.1)
-mcmc_test <- sample_reporting(df, list(mean=8, sd=4),
-                 met_step,
-                 maximise = T)
-mcmc_test
+snapshot_with_Rt_index_df <- df
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.5,
+                      2, 1.5,
+                      3, 0.4,
+                      4, 1.5,
+                      5, 1.5)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(mean=5, sd=3)
+serial_parameters <- list(mean=5, sd=3)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=5,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=5000)
+
+res <- mcmc(niterations=200,
+            snapshot_with_Rt_index_df,
+            priors,
+            serial_parameters,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+```
+Examine results
+```{r}
+onsets <- 90:100
+cases_true_df <- df %>% 
+  filter(time_onset==onset)
+cases_df <- res$cases %>% 
+  filter(time_onset==onset) %>% 
+  mutate(cases_known=cases_true_df$cases_true[1]) %>% 
+  pivot_longer(c(cases_true, cases_known))
+
+cases_df %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
+  geom_line()
+
+res_df <- res$Rt
+
+# initialisers were at true values
+Rt_true <- initial_Rt %>% 
+  rename(Rt_true=Rt)
+
+res_df %>% 
+  left_join(Rt_true) %>% 
+  pivot_longer(c(Rt, Rt_true)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+
+rep_df <- res$reporting %>% 
+  mutate(type="estimated") %>% 
+  bind_rows(tibble(mean=r_params$mean, sd=r_params$sd, type="true")) %>% 
+  pivot_longer(-c(iteration, type))
+
+ggplot(data=rep_df %>% filter(type=="estimated"),
+       aes(x=iteration, y=value)) +
+  geom_hline(data=rep_df %>% filter(type=="true"),
+             aes(yintercept=value), linetype=2) +
+  geom_line() +
+  facet_wrap(~name, scales="free")
 ```
 
+# MCMC on real measles data in the Netherlands 2013-14
+```{r}
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
+
+measles_NL_2013 %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported=sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line()
+
+# alternative view
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  group_by(time_onset) %>% 
+  summarise(time_delay=sum(time_delay * cases_reported) / sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=time_delay)) +
+  geom_line()
+```
+Prepare data for fitting
+```{r}
+snapshot_with_Rt_index_df <- thin_series(measles_NL_2013) %>% 
+  select(-date_onset) %>% 
+  group_by(time_onset) %>% 
+  mutate(time_reported=time_reported,
+         cases_reported=cumsum(cases_reported))
+
+# filter and rebase time to start when first case appears
+df_sum <- snapshot_with_Rt_index_df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported=last(cases_reported)) %>% 
+  ungroup() %>% 
+  filter(cases_reported>0)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  ungroup() %>% 
+  filter(time_onset >= df_sum$time_onset[1]) %>% 
+  mutate(time_onset=time_onset - df_sum$time_onset[1] + 1)
+
+initial_cases_true <- snapshot_with_Rt_index_df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_reported)) 
+  
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1,
+                      2, 1,
+                      3, 1,
+                      4, 1,
+                      5, 1)
+Rt_indices <- c(unlist(map(seq(1, 5, 1), ~rep(., 26))), 5)
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(mean=10, sd=3)
+serial_parameters <- list(mean=12, sd=3)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=10,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=100)
+```
+
+Artificially remove hindsight for those onset times near end; we do this by assuming that time_reported=138
+```{r}
+hindsight_removed_df <- snapshot_with_Rt_index_df %>% 
+  filter(time_reported <= 138)
+
+
+res <- mcmc(niterations=400,
+            hindsight_removed_df,
+            priors,
+            serial_parameters,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+```
+
+Rt estimates
+```{r}
+res_df <- res$Rt
+
+res_df %>% 
+  ggplot(aes(x=iteration, y=Rt)) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+```
+Cases
+```{r}
+onsets <- 111:119
+cases_df <- res$cases %>% 
+  filter(time_onset %in% onsets)
+
+cases_df %>% 
+  ggplot(aes(x=iteration, y=cases_true)) +
+  geom_line() +
+  facet_wrap(~time_onset)
+```

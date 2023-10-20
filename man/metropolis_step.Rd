@@ -7,6 +7,7 @@
 metropolis_step(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  prior_parameters,
   metropolis_parameters
 )
 }
@@ -16,6 +17,11 @@ time_onset, time_reported, cases_reported, cases_true}
 
 \item{current_reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
+
+\item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
+'sd_sigma' representing the gamma prior parameters for the mean and sd
+parameters of the reporting parameters (itself described by a gamma
+distribution)}
 
 \item{metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
 step sizes for Metropolis step}

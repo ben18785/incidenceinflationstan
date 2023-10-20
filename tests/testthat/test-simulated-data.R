@@ -106,7 +106,7 @@ test_that("true_cases_single returns sensible values", {
   weights <- purrr::map_dbl(days, ~gamma_discrete_pmf(., d_params))
   cases_history <- rep(1, 40)
   case_1 <- true_cases_single(0.1, 1000, cases_history, weights)
-  case_2 <- true_cases_single(5, 1000, cases_history, weights)
+  case_2 <- true_cases_single(50, 1000, cases_history, weights)
   expect_true(case_2 > case_1)
 })
 

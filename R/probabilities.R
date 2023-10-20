@@ -104,9 +104,9 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
   logp_observation <- 0
   if(nrow(observation_df) > 1) # handling cases arising today which were reported today
     logp_observation <- observation_process_logp(observation_df=observation_df,
-                                               cases_true=cases_true,
-                                               day_onset=day_onset,
-                                               reporting_parameters=reporting_parameters)
+                                                 cases_true=cases_true,
+                                                 day_onset=day_onset,
+                                                 reporting_parameters=reporting_parameters)
   logp_state <- state_process_logp(cases_true=cases_true,
                                    cases_history=cases_history,
                                    Rt=Rt,
@@ -132,7 +132,7 @@ observation_process_all_times_logp <- function(
   # check that only one true case per onset time
   n_onset <- length(onset_times)
   test_df <- snapshot_with_true_cases_df %>%
-    dplyr::select(.data$time_onset, .data$cases_true) %>%
+    dplyr::select("time_onset", "cases_true") %>%
     unique()
   if(n_onset != nrow(test_df))
     stop("There must be only one true case measurement per each onset time.")
@@ -148,10 +148,11 @@ observation_process_all_times_logp <- function(
       dplyr::filter(.data$time_onset==onset_time)
     cases_true <- short_df$cases_true[1]
     if(nrow(short_df) > 1) {# handling cases arising today which were reported today
-      logp_new <- observation_process_logp(short_df,
-                                         cases_true=cases_true,
-                                         day_onset=onset_time,
-                                         reporting_parameters=reporting_parameters)
+      logp_new <- observation_process_logp(
+        short_df,
+        cases_true=cases_true,
+        day_onset=onset_time,
+        reporting_parameters=reporting_parameters)
       logp <- logp + logp_new
     }
   }

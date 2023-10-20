@@ -37,6 +37,19 @@ pgamma_mean_sd <- function(x, mu, sigma) {
   stats::pgamma(x, shape, rate)
 }
 
+#' Reparameterisation of gamma pdf using mean and sd
+#'
+#' @param x a value to be evaluated at
+#' @param mu a mean
+#' @param sigma a standard deviation
+#'
+#' @return a density
+dgamma_mean_sd <- function(x, mu, sigma, ...) {
+  shape <- mu^2 / sigma^2
+  rate <- mu / sigma^2
+  stats::dgamma(x, shape, rate, ...)
+}
+
 #' Reparameterisation of gamma inverse-cdf using mean and sd
 #'
 #' @param x a value to be evaluated at
