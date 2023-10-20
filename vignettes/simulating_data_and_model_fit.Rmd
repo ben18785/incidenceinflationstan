@@ -179,20 +179,7 @@ Rt_df %>%
   xlab("Onset time")
 ```
 
-
-Sample reporting parameters: here, we use maximisation
-```{r}
-met_step <- list(mean_step=0.25,
-                 sd_step=0.1)
-mcmc_test <- sample_reporting(
-  df,
-  list(mean=8, sd=4),
-  met_step,
-  maximise = F)
-mcmc_test
-```
-
-# MCMC in simulated data
+# Inference on simulated data
 
 ```{r}
 snapshot_with_Rt_index_df <- df
@@ -270,27 +257,7 @@ ggplot(data=rep_df %>% filter(type=="estimated"),
   facet_wrap(~name, scales="free")
 ```
 
-# MCMC on real data
-Influenza-like illness in the US
-```{r}
-ILI_2014 %>% 
-  mutate(time_delay=time_reported-time_onset) %>%
-  ggplot(aes(x=time_onset, y=time_delay,
-             fill=cases_reported)) +
-  geom_tile() +
-  scale_fill_distiller(direction=1)
-ILI_2014 %>% 
-  group_by(time_onset) %>% 
-  summarise(cases_reported1=cases_reported[1],
-            cases_reported=sum(cases_reported, na.rm = T)) %>% 
-  ggplot(aes(x=time_onset, y=cases_reported)) +
-  geom_line() +
-  geom_line(aes(y=cases_reported1))
-```
-Get the data above for a longer time series
-using the DELPHI API
-
-Measles NL 2013-2014
+# MCMC on real measles data in the Netherlands 2013-14
 ```{r}
 measles_NL_2013 %>% 
   mutate(time_delay=time_reported-time_onset) %>%
@@ -298,6 +265,7 @@ measles_NL_2013 %>%
              fill=cases_reported)) +
   geom_tile() +
   scale_fill_distiller(direction=1)
+
 measles_NL_2013 %>% 
   group_by(time_onset) %>% 
   summarise(cases_reported=sum(cases_reported)) %>% 
@@ -312,7 +280,7 @@ measles_NL_2013 %>%
   ggplot(aes(x=time_onset, y=time_delay)) +
   geom_line()
 ```
-
+Prepare data for fitting
 ```{r}
 snapshot_with_Rt_index_df <- thin_series(measles_NL_2013) %>% 
   select(-date_onset) %>% 
@@ -357,46 +325,6 @@ priors <- list(Rt=Rt_prior,
                               sd_mu=3,
                               sd_sigma=5),
                max_cases=100)
-
-res <- mcmc(niterations=400,
-            snapshot_with_Rt_index_df,
-            priors,
-            serial_parameters,
-            initial_reporting_parameters,
-            initial_Rt,
-            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
-```
-
-Rt estimates
-```{r}
-res_df <- res$Rt
-
-res_df %>% 
-  ggplot(aes(x=iteration, y=Rt)) +
-  geom_line() +
-  facet_wrap(~Rt_index)
-```
-Delay period
-```{r}
-rep_df <- res$reporting %>% 
-  pivot_longer(-c(iteration))
-
-ggplot(data=rep_df,
-       aes(x=iteration, y=value)) +
-  geom_line() +
-  facet_wrap(~name, scales="free")
-```
-Cases
-```{r}
-onsets <- 101:110
-cases_df <- res$cases %>% 
-  filter(time_onset %in% onsets)
-
-cases_df %>% 
-  ggplot(aes(x=iteration, y=cases_true)) +
-  geom_line() +
-  facet_wrap(~time_onset)
 ```
 
 Artificially remove hindsight for those onset times near end; we do this by assuming that time_reported=138
