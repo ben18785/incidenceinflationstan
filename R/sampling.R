@@ -79,10 +79,10 @@ sample_cases_history <- function(
     onset_time <- onset_times_uncertain_period[i]
     snapshots_at_onset_time_df <- observation_history_df %>%
       dplyr::filter(.data$time_onset==onset_time) %>%
-      dplyr::select(.data$time_reported, .data$cases_reported)
+      dplyr::select("time_reported", "cases_reported")
     pre_observation_df <- observation_history_df %>%
       dplyr::filter(.data$time_onset < onset_time) %>%
-      dplyr::select(.data$time_onset, .data$cases_estimated) %>%
+      dplyr::select("time_onset", "cases_estimated") %>%
       unique() %>%
       dplyr::arrange(dplyr::desc(.data$time_onset))
     cases_history <- pre_observation_df$cases_estimated
@@ -409,7 +409,7 @@ sample_reporting <- function(
 
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
-#' @param niterations number of MCMC iterations to run
+#' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
 #' @param snapshot_with_Rt_index_df a tibble with
 #' four columns: time_onset, time_reported, cases_reported, Rt_index
 #' @param priors a named list with: 'Rt', 'reporting', 'max_cases'. These take
@@ -425,6 +425,8 @@ sample_reporting <- function(
 #' step sizes for Metropolis step
 #' @param maximise whether to estimate MAP values of parameters (if true) or
 #' sample parameter values using MCMC (if false). By default this is false.
+#' @param initial_cases_true a tibble with two columns: "time_onset" and "cases_true", which represents initial
+#' estimates of the true number of cases with each onset time.
 #' @param initial_reporting_parameters a list with two named elements: 'mean', 'sd'
 #' indicating an initial guess of the mean and sd of the reporting delay distribution
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
@@ -436,10 +438,12 @@ mcmc <- function(
   snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
+  initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
   reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
+
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
                       "cases_reported", "Rt_index")
@@ -475,6 +479,8 @@ mcmc <- function(
     end <- numeric(niterations)
   }
 
+  max_cases <- priors$max_cases
+
   k <- 1
   for(i in 1:niterations) {
 
@@ -499,7 +505,7 @@ mcmc <- function(
     # sample Rt
     cases_history_df <- df_running %>%
       dplyr::select(time_onset, Rt_index) %>%
-      dplyr::left_join(df_temp, by = "time_onset") %>%
+      dplyr::left_join(df_temp, by = "time_onset", relationship = "many-to-many") %>%
       dplyr::select(-c("cases_reported", "time_reported")) %>%
       dplyr::rename(cases_true=cases_estimated) %>%
       unique()

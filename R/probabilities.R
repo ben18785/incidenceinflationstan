@@ -132,7 +132,7 @@ observation_process_all_times_logp <- function(
   # check that only one true case per onset time
   n_onset <- length(onset_times)
   test_df <- snapshot_with_true_cases_df %>%
-    dplyr::select(.data$time_onset, .data$cases_true) %>%
+    dplyr::select("time_onset", "cases_true") %>%
     unique()
   if(n_onset != nrow(test_df))
     stop("There must be only one true case measurement per each onset time.")

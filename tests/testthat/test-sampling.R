@@ -125,8 +125,8 @@ test_that("sample_cases_history adds cases_estimated that look reasonable", {
                            kappa=kappa, thinned=T)
   max_cases <- 5000
   df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
-  expect_true(dplyr::all_equal(df_est %>% dplyr::select(-cases_estimated),
-                               df))
+  expect_true(all.equal(df_est %>% dplyr::select(-cases_estimated),
+                        df))
   expect_true(max(df_est$cases_estimated) < max_cases)
   expect_true(min(df_est$cases_estimated) > 0)
   expect_equal(sum(is.na(df_est$cases_estimated)), 0)
@@ -437,21 +437,24 @@ test_that("mcmc produces outputs of correct shape", {
                            kappa=kappa)
 
   snapshot_with_Rt_index_df <- df
-  initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
-  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
-  initial_Rt <- tribble(~Rt_index, ~Rt,
+  initial_cases_true <- df %>%
+    dplyr::select(time_onset, cases_true) %>%
+    unique()
+  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+    dplyr::select(-cases_true)
+  initial_Rt <- tidyr::tribble(~Rt_index, ~Rt,
                         1, 1.5,
                         2, 1.5,
                         3, 0.4,
                         4, 1.5,
                         5, 1.5)
-  Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+  Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
 
-  Rt_index_lookup <- tibble(
+  Rt_index_lookup <- tidyr::tibble(
     time_onset=seq_along(Rt_indices),
     Rt_index=Rt_indices)
   snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
-    left_join(Rt_index_lookup)
+    dplyr::left_join(Rt_index_lookup)
 
   initial_reporting_parameters <- list(mean=5, sd=3)
   serial_parameters <- list(mean=5, sd=3)
@@ -468,6 +471,7 @@ test_that("mcmc produces outputs of correct shape", {
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
+              initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
               reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
@@ -503,5 +507,41 @@ test_that("mcmc produces outputs of correct shape", {
   expect_equal(max(reporting_df$iteration), niter)
 
   # test optimisation
+  niter <- 2 # needed since maximisation is iterative
+  res <- mcmc(niterations=niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_cases_true,
+              initial_reporting_parameters,
+              initial_Rt,
+              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+              serial_max=40, p_gamma_cutoff=0.99, maximise=TRUE)
+  ### overall
+  expect_equal(length(res), 3)
 
+  ### cases
+  cases_df <- res$cases
+  expect_true(all.equal(c("time_onset", "cases_true", "iteration"),
+                        colnames(cases_df)))
+  expect_equal(min(cases_df$iteration), 1)
+  expect_equal(max(cases_df$iteration), niter)
+  expect_equal(min(cases_df$time_onset), min(df$time_onset))
+  expect_equal(max(cases_df$time_onset), max(df$time_onset))
+
+  ## Rt
+  rt_df <- res$Rt
+  expect_true(all.equal(c("iteration", "Rt_index", "Rt"),
+                        colnames(rt_df)))
+  expect_equal(min(rt_df$iteration), 1)
+  expect_equal(max(rt_df$iteration), niter)
+  expect_equal(min(rt_df$Rt_index), min(initial_Rt$Rt_index))
+  expect_equal(max(rt_df$Rt_index), max(initial_Rt$Rt_index))
+
+  # reporting delays
+  reporting_df <- res$reporting
+  expect_true(all.equal(c("iteration", "mean", "sd"),
+                        colnames(reporting_df)))
+  expect_equal(min(reporting_df$iteration), 1)
+  expect_equal(max(reporting_df$iteration), niter)
 })
