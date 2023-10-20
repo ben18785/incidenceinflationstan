@@ -426,7 +426,7 @@ res_df %>%
 ```
 Cases
 ```{r}
-onsets <- 101:110
+onsets <- 111:119
 cases_df <- res$cases %>% 
   filter(time_onset %in% onsets)
 

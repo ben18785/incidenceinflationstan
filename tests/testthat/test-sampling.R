@@ -423,3 +423,85 @@ test_that("sample_reporting produces output of correct shape", {
   expect_equal(nrow(output), 1)
   expect_equal(max(output$draw_index), 1)
 })
+
+
+test_that("mcmc produces outputs of correct shape", {
+
+  days_total <- 100
+  r_params <- list(mean=10, sd=3)
+  s_params <- list(mean=5, sd=3)
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  kappa <- 10
+  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                           kappa=kappa)
+
+  snapshot_with_Rt_index_df <- df
+  initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
+  initial_Rt <- tribble(~Rt_index, ~Rt,
+                        1, 1.5,
+                        2, 1.5,
+                        3, 0.4,
+                        4, 1.5,
+                        5, 1.5)
+  Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+  Rt_index_lookup <- tibble(
+    time_onset=seq_along(Rt_indices),
+    Rt_index=Rt_indices)
+  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+    left_join(Rt_index_lookup)
+
+  initial_reporting_parameters <- list(mean=5, sd=3)
+  serial_parameters <- list(mean=5, sd=3)
+  priors <- list(Rt=Rt_prior,
+                 reporting=list(mean_mu=5,
+                                mean_sigma=10,
+                                sd_mu=3,
+                                sd_sigma=5),
+                 max_cases=5000)
+
+  # test MCMC sampling
+  niter <- 5
+  res <- mcmc(niterations=niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_reporting_parameters,
+              initial_Rt,
+              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+
+  ## check outputs
+  ### overall
+  expect_equal(length(res), 3)
+
+  ### cases
+  cases_df <- res$cases
+  expect_true(all.equal(c("time_onset", "cases_true", "iteration"),
+                        colnames(cases_df)))
+  expect_equal(min(cases_df$iteration), 1)
+  expect_equal(max(cases_df$iteration), niter)
+  expect_equal(min(cases_df$time_onset), min(df$time_onset))
+  expect_equal(max(cases_df$time_onset), max(df$time_onset))
+
+  ## Rt
+  rt_df <- res$Rt
+  expect_true(all.equal(c("iteration", "Rt_index", "Rt"),
+                        colnames(rt_df)))
+  expect_equal(min(rt_df$iteration), 1)
+  expect_equal(max(rt_df$iteration), niter)
+  expect_equal(min(rt_df$Rt_index), min(initial_Rt$Rt_index))
+  expect_equal(max(rt_df$Rt_index), max(initial_Rt$Rt_index))
+
+  # reporting delays
+  reporting_df <- res$reporting
+  expect_true(all.equal(c("iteration", "mean", "sd"),
+                        colnames(reporting_df)))
+  expect_equal(min(reporting_df$iteration), 1)
+  expect_equal(max(reporting_df$iteration), niter)
+
+  # test optimisation
+
+})

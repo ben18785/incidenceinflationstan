@@ -429,10 +429,11 @@ sample_reporting <- function(
 #' indicating an initial guess of the mean and sd of the reporting delay distribution
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
-#' @return
+#' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @export
 mcmc <- function(
-  niterations, snapshot_with_Rt_index_df,
+  niterations,
+  snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
   initial_reporting_parameters,

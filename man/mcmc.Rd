@@ -14,7 +14,8 @@ mcmc(
   reporting_metropolis_parameters = list(mean_step = 0.25, sd_step = 0.1),
   serial_max = 40,
   p_gamma_cutoff = 0.99,
-  maximise = FALSE
+  maximise = FALSE,
+  print_to_screen = TRUE
 )
 }
 \arguments{
@@ -50,7 +51,7 @@ step sizes for Metropolis step}
 sample parameter values using MCMC (if false). By default this is false.}
 }
 \value{
-
+a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 }
 \description{
 Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
