@@ -51,8 +51,13 @@ step sizes for Metropolis step}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
+\item{p_gamma_cutoff}{a p value (0 <= p <= 1) indicating the threshold above which
+we deem certainty}
+
 \item{maximise}{whether to estimate MAP values of parameters (if true) or
 sample parameter values using MCMC (if false). By default this is false.}
+
+\item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true.}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

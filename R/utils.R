@@ -42,7 +42,7 @@ pgamma_mean_sd <- function(x, mu, sigma) {
 #' @param x a value to be evaluated at
 #' @param mu a mean
 #' @param sigma a standard deviation
-#'
+#' @param ... other arguments passed to method
 #' @return a density
 dgamma_mean_sd <- function(x, mu, sigma, ...) {
   shape <- mu^2 / sigma^2

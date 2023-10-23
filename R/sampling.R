@@ -421,6 +421,7 @@ sample_reporting <- function(
 #' limit of the discrete uniform distribution representing the prior on true
 #' cases
 #' @inheritParams sample_Rt_single_piece
+#' @inheritParams max_uncertain_days
 #' @param reporting_metropolis_parameters named list of 'mean_step', 'sd_step' containing
 #' step sizes for Metropolis step
 #' @param maximise whether to estimate MAP values of parameters (if true) or
@@ -431,8 +432,10 @@ sample_reporting <- function(
 #' indicating an initial guess of the mean and sd of the reporting delay distribution
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
+#' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @export
+#' @importFrom rlang .data
 mcmc <- function(
   niterations,
   snapshot_with_Rt_index_df,
@@ -468,7 +471,7 @@ mcmc <- function(
   num_cases_true <- unique(df_running$time_onset)
 
   if(print_to_screen) {
-    progress_bar <- txtProgressBar(
+    progress_bar <- utils::txtProgressBar(
       min = 0,
       max = niterations,
       style = 3,
@@ -491,8 +494,8 @@ mcmc <- function(
     Rt_current <- df_running %>%
       dplyr::select(time_onset, Rt) %>%
       unique()
-    Rt_function <- approxfun(Rt_current$time_onset,
-                             Rt_current$Rt)
+    Rt_function <- stats::approxfun(Rt_current$time_onset,
+                                    Rt_current$Rt)
     df_current <- df_running %>%
       dplyr::select(time_onset, time_reported, cases_reported)
 
@@ -562,7 +565,7 @@ mcmc <- function(
 
     if(print_to_screen) {
       end[i] <- Sys.time()
-      setTxtProgressBar(progress_bar, i)
+      utils::setTxtProgressBar(progress_bar, i)
       time <- round(lubridate::seconds_to_period(sum(end - init)), 0)
 
       # Estimated remaining time based on the
