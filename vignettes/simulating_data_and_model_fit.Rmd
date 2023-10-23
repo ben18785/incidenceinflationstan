@@ -212,6 +212,7 @@ res <- mcmc(niterations=200,
             snapshot_with_Rt_index_df,
             priors,
             serial_parameters,
+            initial_cases_true,
             initial_reporting_parameters,
             initial_Rt,
             reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
@@ -221,15 +222,17 @@ Examine results
 ```{r}
 onsets <- 90:100
 cases_true_df <- df %>% 
-  filter(time_onset==onset)
+  filter(time_onset %in% onsets) %>% 
+  rename(cases_known=cases_true)
 cases_df <- res$cases %>% 
-  filter(time_onset==onset) %>% 
-  mutate(cases_known=cases_true_df$cases_true[1]) %>% 
+  filter(time_onset %in% onsets) %>% 
+  left_join(cases_true_df %>% select(-c(cases_reported, time_reported))) %>% 
   pivot_longer(c(cases_true, cases_known))
 
 cases_df %>% 
   ggplot(aes(x=iteration, y=value, colour=name)) +
-  geom_line()
+  geom_line() +
+  facet_wrap(~time_onset)
 
 res_df <- res$Rt
 
@@ -332,11 +335,11 @@ Artificially remove hindsight for those onset times near end; we do this by assu
 hindsight_removed_df <- snapshot_with_Rt_index_df %>% 
   filter(time_reported <= 138)
 
-
 res <- mcmc(niterations=400,
             hindsight_removed_df,
             priors,
             serial_parameters,
+            initial_cases_true,
             initial_reporting_parameters,
             initial_Rt,
             reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),

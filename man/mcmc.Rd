@@ -9,6 +9,7 @@ mcmc(
   snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
+  initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
   reporting_metropolis_parameters = list(mean_step = 0.25, sd_step = 0.1),
@@ -19,7 +20,7 @@ mcmc(
 )
 }
 \arguments{
-\item{niterations}{number of MCMC iterations to run}
+\item{niterations}{number of MCMC iterations to run or number of iterative maximisations to run}
 
 \item{snapshot_with_Rt_index_df}{a tibble with
 four columns: time_onset, time_reported, cases_reported, Rt_index}
@@ -35,6 +36,9 @@ cases}
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
+
+\item{initial_cases_true}{a tibble with two columns: "time_onset" and "cases_true", which represents initial
+estimates of the true number of cases with each onset time.}
 
 \item{initial_reporting_parameters}{a list with two named elements: 'mean', 'sd'
 indicating an initial guess of the mean and sd of the reporting delay distribution}
