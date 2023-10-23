@@ -519,8 +519,10 @@ mcmc <- function(
                        serial_max,
                        ndraws=1,
                        maximise=maximise)
+    # nocov start
     if(nrow(df_Rt) != num_Rts)
       stop("Number of Rts outputted not equal to initial Rt dims.")
+    # nocov end
     # store Rts
     for(j in 1:num_Rts) {
       Rt_index <- df_Rt$Rt_index[j]

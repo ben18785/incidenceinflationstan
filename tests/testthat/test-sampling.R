@@ -465,6 +465,33 @@ test_that("mcmc produces outputs of correct shape", {
                                 sd_sigma=5),
                  max_cases=5000)
 
+  # test throws errors
+  ## wrongly named cols
+  wrong_df <- snapshot_with_Rt_index_df %>%
+    dplyr::rename(time_onset_wrong=time_onset)
+  expect_error(mcmc(niterations=niter,
+                    wrong_df,
+                    priors,
+                    serial_parameters,
+                    initial_cases_true,
+                    initial_reporting_parameters,
+                    initial_Rt,
+                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+
+  ## too many cols
+  wrong_df <- snapshot_with_Rt_index_df %>%
+    dplyr::mutate(unnecessary_col="hi")
+  expect_error(mcmc(niterations=niter,
+                    wrong_df,
+                    priors,
+                    serial_parameters,
+                    initial_cases_true,
+                    initial_reporting_parameters,
+                    initial_Rt,
+                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+
   # test MCMC sampling
   niter <- 5
   res <- mcmc(niterations=niter,
