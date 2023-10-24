@@ -12,6 +12,8 @@ dgamma_mean_sd(x, mu, sigma, ...)
 \item{mu}{a mean}
 
 \item{sigma}{a standard deviation}
+
+\item{...}{other arguments passed to method}
 }
 \value{
 a density
