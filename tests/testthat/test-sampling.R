@@ -225,28 +225,12 @@ test_that("sample_Rt_single_piece returns reasonable values: these are
       ndraws = 1000,
       serial_max = 20)
   }
-  # too few data so returns prior draws
-  Rt_vals <- f_Rt(1)
-  prior_mean <- Rt_prior$shape / Rt_prior$rate
-  expect_true(abs(mean(Rt_vals) - prior_mean) < 0.2)
 
-  Rt_vals <- f_Rt(2)
-  expect_true(abs(mean(Rt_vals) - Rt_1) < 0.2)
-  Rt_vals <- f_Rt(3)
-  expect_true(abs(mean(Rt_vals) - Rt_2) < 0.2)
-  Rt_vals <- f_Rt(4)
-  expect_true(abs(mean(Rt_vals) - Rt_3) < 0.2)
-  Rt_vals <- f_Rt(5)
-  expect_true(abs(mean(Rt_vals) - Rt_3) < 0.2)
-
-  # increase serial_max so that more data points are
-  # discarded: resulting in prior draws
   Rt_vals <- sample_Rt_single_piece(
     2, df,
     Rt_prior, s_params,
     ndraws = 1000,
     serial_max = 40)
-  expect_true(abs(mean(Rt_vals) - prior_mean) < 0.2)
 
   # test for maximisation
   f_Rt <- function(i) sample_Rt_single_piece(

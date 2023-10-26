@@ -142,21 +142,13 @@ sample_Rt_single_piece <- function(
     dplyr::filter(.data$Rt_index <= Rt_piece_index)
   time_max_post_initial_period <- max(short_df$time_onset) - serial_max
 
-  # sample from prior if no data
   posterior_shape <- Rt_prior_parameters$shape
   posterior_rate <- Rt_prior_parameters$rate
-  if(time_max_post_initial_period <= 0) {
-    return(sample_or_maximise_gamma(
-      posterior_shape, posterior_rate, ndraws, maximise))
-  }
 
-  # if some data but not enough for whole period
-  # do not use truncated points as observed data
-  # (but they will be used as covariates)
   short_df <- short_df %>%
     dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
     dplyr::mutate(is_observed_data=dplyr::if_else(
-      (.data$time_after_start > 0) & (.data$Rt_index == Rt_piece_index), 1, 0))
+      .data$Rt_index == Rt_piece_index, 1, 0))
   onset_times <- short_df %>%
     dplyr::filter(.data$is_observed_data == 1) %>%
     dplyr::pull(.data$time_onset)
@@ -164,16 +156,22 @@ sample_Rt_single_piece <- function(
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
     onset_time <- onset_times[i]
-    true_cases <- short_df %>%
-      dplyr::filter(.data$time_onset == onset_time) %>%
-      dplyr::pull(.data$cases_true)
-    posterior_shape <- posterior_shape + true_cases
-    cases_history <- short_df %>%
-      dplyr::filter(.data$time_onset < onset_time) %>%
-      dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
-      dplyr::pull(.data$cases_true)
-    cases_history <- cases_history[1:serial_max]
-    posterior_rate <- posterior_rate + sum(w * cases_history)
+    if(onset_time > 1) {
+      true_cases <- short_df %>%
+        dplyr::filter(.data$time_onset == onset_time) %>%
+        dplyr::pull(.data$cases_true)
+      posterior_shape <- posterior_shape + true_cases
+      cases_history <- short_df %>%
+        dplyr::filter(.data$time_onset < onset_time) %>%
+        dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
+        dplyr::pull(.data$cases_true)
+      diff_time <- serial_max - length(cases_history)
+      if(diff_time <= 0)
+        cases_history <- cases_history[1:serial_max]
+      else
+        cases_history <- c(cases_history, rep(0, diff_time))
+      posterior_rate <- posterior_rate + sum(w * cases_history)
+    }
   }
   sample_or_maximise_gamma(
     posterior_shape, posterior_rate, ndraws, maximise)
