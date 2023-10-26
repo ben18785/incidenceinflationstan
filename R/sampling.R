@@ -690,21 +690,21 @@ mcmc <- function(
       if (requireNamespace("foreach", quietly = TRUE)) {
 
         f_run_single <- function() {
-          incidenceinflation::mcmc_single(niterations,
-                                          snapshot_with_Rt_index_df,
-                                          priors,
-                                          serial_parameters,
-                                          initial_cases_true,
-                                          initial_reporting_parameters,
-                                          initial_Rt,
-                                          reporting_metropolis_parameters,
-                                          serial_max,
-                                          p_gamma_cutoff,
-                                          maximise,
-                                          print_to_screen)
+          mcmc_single(niterations,
+                      snapshot_with_Rt_index_df,
+                      priors,
+                      serial_parameters,
+                      initial_cases_true,
+                      initial_reporting_parameters,
+                      initial_Rt,
+                      reporting_metropolis_parameters,
+                      serial_max,
+                      p_gamma_cutoff,
+                      maximise,
+                      print_to_screen)
         }
 
-        list_of_results <- foreach::foreach(i=1:nchains) %dopar% {
+        list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
           res <- f_run_single()
         }
 
