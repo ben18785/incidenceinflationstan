@@ -6,6 +6,9 @@
 \usage{
 combine_chains(list_of_results)
 }
+\arguments{
+\item{list_of_results}{a list of results, where each element is a result of running mcmc_single}
+}
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which
 contain estimates of the model parameters with chain index  included

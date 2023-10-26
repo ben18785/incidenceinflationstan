@@ -592,7 +592,7 @@ mcmc_single <- function(
 
 #' Combines Markov chains across multiple runs of mcmc_single
 #'
-#' @param list_of_results
+#' @param list_of_results a list of results, where each element is a result of running mcmc_single
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which
 #' contain estimates of the model parameters with chain index  included
 combine_chains <- function(list_of_results) {
@@ -687,29 +687,33 @@ mcmc <- function(
     list_of_results <- vector(mode = "list", length = nchains)
     if(is_parallel) {
 
-      if (!requireNamespace("foreach", quietly = TRUE)) {
+      if (requireNamespace("foreach", quietly = TRUE)) {
+
+        f_run_single <- function() {
+          incidenceinflation::mcmc_single(niterations,
+                                          snapshot_with_Rt_index_df,
+                                          priors,
+                                          serial_parameters,
+                                          initial_cases_true,
+                                          initial_reporting_parameters,
+                                          initial_Rt,
+                                          reporting_metropolis_parameters,
+                                          serial_max,
+                                          p_gamma_cutoff,
+                                          maximise,
+                                          print_to_screen)
+        }
+
+        list_of_results <- foreach::foreach(i=1:nchains) %dopar% {
+          res <- f_run_single()
+        }
+
+      } else {
+        # nocov start
         warning("The foreach package must be installed to use this functionality")
         #Either exit or do something without rgl
         return(NULL)
-      }
-
-      f_run_single <- function() {
-        incidenceinflation::mcmc_single(niterations,
-                    snapshot_with_Rt_index_df,
-                    priors,
-                    serial_parameters,
-                    initial_cases_true,
-                    initial_reporting_parameters,
-                    initial_Rt,
-                    reporting_metropolis_parameters,
-                    serial_max,
-                    p_gamma_cutoff,
-                    maximise,
-                    print_to_screen)
-      }
-
-      list_of_results <- foreach::foreach(i=1:nchains) %dopar% {
-        res <- f_run_single()
+        # nocov end
       }
 
     } else {
