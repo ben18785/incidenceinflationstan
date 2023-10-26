@@ -2,6 +2,7 @@
 
 export(generate_snapshots)
 export(mcmc)
+export(mcmc_single)
 export(observed_cases)
 export(sample_Rt)
 export(sample_cases_history)

@@ -432,9 +432,9 @@ sample_reporting <- function(
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
-#' @export
 #' @importFrom rlang .data
-mcmc <- function(
+#' @export
+mcmc_single <- function(
   niterations,
   snapshot_with_Rt_index_df,
   priors,
@@ -588,4 +588,150 @@ mcmc <- function(
   list(cases=cases_history_samples,
        Rt=Rt_samples,
        reporting=reporting_samples)
+}
+
+#' Combines Markov chains across multiple runs of mcmc_single
+#'
+#' @param list_of_results
+#' @return a named list of three tibbles: "cases", "Rt" and "reporting" which
+#' contain estimates of the model parameters with chain index  included
+combine_chains <- function(list_of_results) {
+
+  for(i in seq_along(list_of_results)) {
+    res <- list_of_results[[i]]
+    cases_df <- res$cases
+    Rt_df <- res$Rt
+    reporting_df <- res$reporting
+    cases_df$chain <- i
+    Rt_df$chain <- i
+    reporting_df$chain <- i
+
+    if(i == 1) {
+      cases_overall <- cases_df
+      Rt_overall <- Rt_df
+      reporting_overall <- reporting_df
+    } else {
+      cases_overall <- cases_overall %>% dplyr::bind_rows(cases_df)
+      Rt_overall <- Rt_overall %>% dplyr::bind_rows(Rt_df)
+      reporting_overall <- reporting_overall %>% dplyr::bind_rows(reporting_df)
+    }
+  }
+  list(
+    cases=cases_overall,
+    Rt=Rt_overall,
+    reporting=reporting_overall
+  )
+}
+
+#' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
+#'
+#' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
+#' @param snapshot_with_Rt_index_df a tibble with
+#' four columns: time_onset, time_reported, cases_reported, Rt_index
+#' @param priors a named list with: 'Rt', 'reporting', 'max_cases'. These take
+#' the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
+#' the gamma prior for each Rt; 'reporting' is a named list with elements
+#' 'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the gamma
+#' prior parameters for the mean and sd parameters of the reporting parameters
+#' (itself described by a gamma distribution); max cases controls the upper
+#' limit of the discrete uniform distribution representing the prior on true
+#' cases
+#' @inheritParams sample_Rt_single_piece
+#' @inheritParams max_uncertain_days
+#' @param reporting_metropolis_parameters named list of 'mean_step', 'sd_step' containing
+#' step sizes for Metropolis step
+#' @param maximise whether to estimate MAP values of parameters (if true) or
+#' sample parameter values using MCMC (if false). By default this is false.
+#' @param initial_cases_true a tibble with two columns: "time_onset" and "cases_true", which represents initial
+#' estimates of the true number of cases with each onset time.
+#' @param initial_reporting_parameters a list with two named elements: 'mean', 'sd'
+#' indicating an initial guess of the mean and sd of the reporting delay distribution
+#' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
+#' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
+#' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true. Disabled when is_parallel is TRUE.
+#' @param nchains number of Markov chains to run. Defaults to 1
+#' @param is_parallel Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.
+#' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
+#' @export
+#' @importFrom rlang .data
+mcmc <- function(
+    niterations,
+    snapshot_with_Rt_index_df,
+    priors,
+    serial_parameters,
+    initial_cases_true,
+    initial_reporting_parameters,
+    initial_Rt,
+    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
+    nchains=1, is_parallel=FALSE) {
+
+  if(nchains==1) {
+    res <- mcmc_single(niterations,
+                       snapshot_with_Rt_index_df,
+                       priors,
+                       serial_parameters,
+                       initial_cases_true,
+                       initial_reporting_parameters,
+                       initial_Rt,
+                       reporting_metropolis_parameters,
+                       serial_max,
+                       p_gamma_cutoff,
+                       maximise,
+                       print_to_screen)
+    res$cases$chain <- 1
+    res$Rt$chain <- 1
+    res$reporting$chain <- 1
+  } else {
+
+    list_of_results <- vector(mode = "list", length = nchains)
+    if(is_parallel) {
+
+      if (!requireNamespace("foreach", quietly = TRUE)) {
+        warning("The foreach package must be installed to use this functionality")
+        #Either exit or do something without rgl
+        return(NULL)
+      }
+
+      f_run_single <- function() {
+        incidenceinflation::mcmc_single(niterations,
+                    snapshot_with_Rt_index_df,
+                    priors,
+                    serial_parameters,
+                    initial_cases_true,
+                    initial_reporting_parameters,
+                    initial_Rt,
+                    reporting_metropolis_parameters,
+                    serial_max,
+                    p_gamma_cutoff,
+                    maximise,
+                    print_to_screen)
+      }
+
+      list_of_results <- foreach::foreach(i=1:nchains) %dopar% {
+        res <- f_run_single()
+      }
+
+    } else {
+      for(i in seq_along(1:nchains)) {
+        res <- mcmc_single(niterations,
+                           snapshot_with_Rt_index_df,
+                           priors,
+                           serial_parameters,
+                           initial_cases_true,
+                           initial_reporting_parameters,
+                           initial_Rt,
+                           reporting_metropolis_parameters,
+                           serial_max,
+                           p_gamma_cutoff,
+                           maximise,
+                           print_to_screen)
+        list_of_results[[i]] <- res
+      }
+    }
+
+    res <- combine_chains(list_of_results)
+  }
+
+  res
 }

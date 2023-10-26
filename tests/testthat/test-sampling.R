@@ -494,28 +494,34 @@ test_that("mcmc produces outputs of correct shape", {
 
   ### cases
   cases_df <- res$cases
-  expect_true(all.equal(c("time_onset", "cases_true", "iteration"),
+  expect_true(all.equal(c("time_onset", "cases_true", "iteration", "chain"),
                         colnames(cases_df)))
   expect_equal(min(cases_df$iteration), 1)
   expect_equal(max(cases_df$iteration), niter)
   expect_equal(min(cases_df$time_onset), min(df$time_onset))
   expect_equal(max(cases_df$time_onset), max(df$time_onset))
+  expect_equal(min(cases_df$chain), 1)
+  expect_equal(max(cases_df$chain), 1)
 
   ## Rt
   rt_df <- res$Rt
-  expect_true(all.equal(c("iteration", "Rt_index", "Rt"),
+  expect_true(all.equal(c("iteration", "Rt_index", "Rt", "chain"),
                         colnames(rt_df)))
   expect_equal(min(rt_df$iteration), 1)
   expect_equal(max(rt_df$iteration), niter)
   expect_equal(min(rt_df$Rt_index), min(initial_Rt$Rt_index))
   expect_equal(max(rt_df$Rt_index), max(initial_Rt$Rt_index))
+  expect_equal(min(rt_df$chain), 1)
+  expect_equal(max(rt_df$chain), 1)
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("iteration", "mean", "sd"),
+  expect_true(all.equal(c("iteration", "mean", "sd", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
+  expect_equal(min(reporting_df$chain), 1)
+  expect_equal(max(reporting_df$chain), 1)
 
   # test optimisation
   niter <- 2 # needed since maximisation is iterative
@@ -533,26 +539,133 @@ test_that("mcmc produces outputs of correct shape", {
 
   ### cases
   cases_df <- res$cases
-  expect_true(all.equal(c("time_onset", "cases_true", "iteration"),
+  expect_true(all.equal(c("time_onset", "cases_true", "iteration", "chain"),
                         colnames(cases_df)))
   expect_equal(min(cases_df$iteration), 1)
   expect_equal(max(cases_df$iteration), niter)
   expect_equal(min(cases_df$time_onset), min(df$time_onset))
   expect_equal(max(cases_df$time_onset), max(df$time_onset))
+  expect_equal(min(cases_df$chain), 1)
+  expect_equal(max(cases_df$chain), 1)
 
   ## Rt
   rt_df <- res$Rt
-  expect_true(all.equal(c("iteration", "Rt_index", "Rt"),
+  expect_true(all.equal(c("iteration", "Rt_index", "Rt", "chain"),
                         colnames(rt_df)))
   expect_equal(min(rt_df$iteration), 1)
   expect_equal(max(rt_df$iteration), niter)
   expect_equal(min(rt_df$Rt_index), min(initial_Rt$Rt_index))
   expect_equal(max(rt_df$Rt_index), max(initial_Rt$Rt_index))
+  expect_equal(min(rt_df$chain), 1)
+  expect_equal(max(rt_df$chain), 1)
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("iteration", "mean", "sd"),
+  expect_true(all.equal(c("iteration", "mean", "sd", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
+  expect_equal(min(reporting_df$chain), 1)
+  expect_equal(max(reporting_df$chain), 1)
+})
+
+test_that("multiple chains works", {
+
+  days_total <- 100
+  r_params <- list(mean=10, sd=3)
+  s_params <- list(mean=5, sd=3)
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  kappa <- 10
+  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                           kappa=kappa)
+
+  snapshot_with_Rt_index_df <- df
+  initial_cases_true <- df %>%
+    dplyr::select(time_onset, cases_true) %>%
+    unique()
+  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+    dplyr::select(-cases_true)
+  initial_Rt <- tidyr::tribble(~Rt_index, ~Rt,
+                               1, 1.5,
+                               2, 1.5,
+                               3, 0.4,
+                               4, 1.5,
+                               5, 1.5)
+  Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+
+  Rt_index_lookup <- tidyr::tibble(
+    time_onset=seq_along(Rt_indices),
+    Rt_index=Rt_indices)
+  snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+    dplyr::left_join(Rt_index_lookup)
+
+  initial_reporting_parameters <- list(mean=5, sd=3)
+  serial_parameters <- list(mean=5, sd=3)
+  priors <- list(Rt=Rt_prior,
+                 reporting=list(mean_mu=5,
+                                mean_sigma=10,
+                                sd_mu=3,
+                                sd_sigma=5),
+                 max_cases=5000)
+
+  # multiple chains in serial
+  niter <- 2
+  nchains <- 2
+  res <- mcmc(niterations=niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_cases_true,
+              initial_reporting_parameters,
+              initial_Rt,
+              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+              nchains=nchains)
+  cases_df <- res$cases
+  Rt_df <- res$Rt
+  rep_df <- res$reporting
+
+  expect_equal(max(cases_df$chain), nchains)
+  expect_equal(max(Rt_df$chain), nchains)
+  expect_equal(max(rep_df$chain), nchains)
+
+  nchains <- 3
+  res <- mcmc(niterations=niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_cases_true,
+              initial_reporting_parameters,
+              initial_Rt,
+              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+              nchains=nchains)
+  cases_df <- res$cases
+  Rt_df <- res$Rt
+  rep_df <- res$reporting
+
+  expect_equal(max(cases_df$chain), nchains)
+  expect_equal(max(Rt_df$chain), nchains)
+  expect_equal(max(rep_df$chain), nchains)
+
+  # multiple chains in parallel
+  library(doParallel)
+  cl <- makeCluster(2)
+  registerDoParallel(cl)
+  res <- mcmc(niterations=niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_cases_true,
+              initial_reporting_parameters,
+              initial_Rt,
+              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+              nchains=nchains, is_parallel=TRUE)
+  stopCluster(cl)
+
+  expect_equal(max(cases_df$chain), nchains)
+  expect_equal(max(Rt_df$chain), nchains)
+  expect_equal(max(rep_df$chain), nchains)
 })
