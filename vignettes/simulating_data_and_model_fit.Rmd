@@ -208,6 +208,10 @@ priors <- list(Rt=Rt_prior,
                               sd_sigma=5),
                max_cases=5000)
 
+# running in parallel across 2 chains
+library(doParallel)
+cl <- makeCluster(2)
+registerDoParallel(cl)
 res <- mcmc(niterations=200,
             snapshot_with_Rt_index_df,
             priors,
@@ -216,8 +220,11 @@ res <- mcmc(niterations=200,
             initial_reporting_parameters,
             initial_Rt,
             reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+            nchains = 2, is_parallel = TRUE)
+stopCluster(cl)
 ```
+
 Examine results
 ```{r}
 onsets <- 90:100
