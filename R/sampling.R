@@ -626,8 +626,7 @@ combine_chains <- function(list_of_results) {
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
 #' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
-#' @param snapshot_with_Rt_index_df a tibble with
-#' four columns: time_onset, time_reported, cases_reported, Rt_index
+#' @param data a tibble with five columns: time_onset, time_reported, cases_reported, Rt_index, reporting_index
 #' @param priors a named list with: 'Rt', 'reporting', 'max_cases'. These take
 #' the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
 #' the gamma prior for each Rt; 'reporting' is a named list with elements
@@ -656,7 +655,7 @@ combine_chains <- function(list_of_results) {
 #' @importFrom rlang .data
 mcmc <- function(
     niterations,
-    snapshot_with_Rt_index_df,
+    data,
     priors,
     serial_parameters,
     initial_cases_true,

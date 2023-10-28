@@ -6,7 +6,7 @@
 \usage{
 mcmc(
   niterations,
-  snapshot_with_Rt_index_df,
+  data,
   priors,
   serial_parameters,
   initial_cases_true,
@@ -24,8 +24,7 @@ mcmc(
 \arguments{
 \item{niterations}{number of MCMC iterations to run or number of iterative maximisations to run}
 
-\item{snapshot_with_Rt_index_df}{a tibble with
-four columns: time_onset, time_reported, cases_reported, Rt_index}
+\item{data}{a tibble with five columns: time_onset, time_reported, cases_reported, Rt_index, reporting_index}
 
 \item{priors}{a named list with: 'Rt', 'reporting', 'max_cases'. These take
 the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
