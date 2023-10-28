@@ -320,7 +320,8 @@ df_sum <- snapshot_with_Rt_index_df %>%
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
   ungroup() %>% 
   filter(time_onset >= df_sum$time_onset[1]) %>% 
-  mutate(time_onset=time_onset - df_sum$time_onset[1] + 1)
+  mutate(time_reported=time_reported - df_sum$time_onset[1] + 1,
+         time_onset=time_onset - df_sum$time_onset[1] + 1)
 
 initial_cases_true <- snapshot_with_Rt_index_df %>% 
   group_by(time_onset) %>% 
