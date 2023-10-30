@@ -27,6 +27,7 @@ convert_df_to_posterior_format <- function(res_df, parameter_cols, names_cols,
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @export
 convert_results_to_posterior_format <- function(results) {
+
   cases_df <- results$cases
   Rt_df <- results$Rt
   rep_df <- results$reporting
@@ -39,7 +40,11 @@ convert_results_to_posterior_format <- function(results) {
       .iteration=iteration
     ) %>%
     dplyr::mutate(.draw=.iteration) %>%
-    dplyr::relocate(c(.chain, .iteration, .draw))
+    dplyr::relocate(c(.chain, .iteration, .draw)) %>%
+    tidyr::pivot_wider(
+      id_cols = c(.chain, .iteration, .draw),
+      names_from=reporting_piece_index,
+      values_from = c(mean, sd))
 
   list(
     cases=cases_df,
