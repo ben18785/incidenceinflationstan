@@ -15,7 +15,7 @@ sample_cases_history(
 )
 }
 \arguments{
-\item{observation_onset_df}{a tibble with three columns: time_onset, time_reported, cases_reported}
+\item{observation_onset_df}{a tibble with four columns: time_onset, time_reported, cases_reported, reporting_piece_index}
 
 \item{max_cases}{maximum possible cases thought to arise on a given day}
 
@@ -24,10 +24,8 @@ sample_cases_history(
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
-distribution indicating a single reporting delay distribution for the whole period
-or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
-delay distribution for each time period}
+\item{reporting_parameters}{a tibble with three columns: reporting_piece_index,
+mean, sd.}
 
 \item{p_gamma_cutoff}{a p value (0 <= p <= 1) indicating the threshold above which
 we deem certainty}

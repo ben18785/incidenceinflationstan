@@ -288,13 +288,13 @@ test_that("observed_cases throws error if wrong dimensions of reporting paramete
 test_that("generate_snapshots with temporal variation in reporting works", {
 
   days_total <- 100
-  v_Rt <- c(rep(1.3, 25), rep(1, 25), rep(1.3, 50))
+  v_Rt <- c(rep(1.5, 25), rep(1.5, 25), rep(1.3, 50))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
   s_params <- list(mean=2, sd=1)
   kappa <- 1000
 
   # start with large reporting delays then shrink this near to zero
-  r_params <- tibble(
+  r_params <- dplyr::tibble(
     time_onset=seq(1, days_total, 1),
     mean=c(rep(10, 50), rep(0.1, 50)),
     sd=c(rep(3, 50), rep(0.1, 50))
@@ -307,14 +307,14 @@ test_that("generate_snapshots with temporal variation in reporting works", {
   # t=90; the former should have much smaller difference
   t <- 40
   rep <- reported_cases %>%
-    filter(time_onset==t) %>%
-    filter(time_reported==(t + 1))
+    dplyr::filter(time_onset==t) %>%
+    dplyr::filter(time_reported==(t + 1))
   ratio_early <- (rep$cases_true - rep$cases_reported) / rep$cases_true
 
   t <- 90
   rep <- reported_cases %>%
-    filter(time_onset==t) %>%
-    filter(time_reported==(t + 1))
+    dplyr::filter(time_onset==t) %>%
+    dplyr::filter(time_reported==(t + 1))
   ratio_late <- (rep$cases_true - rep$cases_reported) / rep$cases_true
 
   expect_true(ratio_early > ratio_late)

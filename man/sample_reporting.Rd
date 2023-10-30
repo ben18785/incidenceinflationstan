@@ -18,8 +18,7 @@ sample_reporting(
 \item{snapshot_with_true_cases_df}{a tibble with four columns:
 time_onset, time_reported, cases_reported, cases_true}
 
-\item{current_reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
 \item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 'sd_sigma' representing the gamma prior parameters for the mean and sd
@@ -36,7 +35,7 @@ to draw parameters}
 \item{ndraws}{number of iterates of the Markov chain to simulate}
 }
 \value{
-a tibble with three columns: "draw_index", "mean, "sd"
+a tibble with four columns: "reporting_piece_index", "draw_index", "mean, "sd"
 }
 \description{
 Draw reporting parameter values either by sampling or by

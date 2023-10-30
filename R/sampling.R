@@ -276,7 +276,7 @@ propose_reporting_parameters <- function(
   sd_proposed <- purrr::map_dbl(sd_now, ~stats::rnorm(1, ., sd_stepsize))
 
   current_reporting_parameters %>%
-    mutate(
+    dplyr::mutate(
       mean=mean_proposed,
       sd=sd_proposed
     )
@@ -516,6 +516,7 @@ sample_reporting <- function(
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @importFrom rlang .data
+#' @importFrom methods is
 #' @export
 mcmc_single <- function(
   niterations,
@@ -547,7 +548,7 @@ mcmc_single <- function(
 
   reporting_current <- initial_reporting_parameters
   if(methods::is(reporting_current, "list")) # if only a single list provided
-    reporting_parameters <- dplyr::tibble(
+    reporting_current <- dplyr::tibble(
       reporting_piece_index=1,
       mean=reporting_current$mean,
       sd=reporting_current$sd
@@ -680,9 +681,9 @@ mcmc_single <- function(
     as.data.frame()
   colnames(Rt_samples) <- c("iteration", "Rt_index", "Rt")
 
-  list(cases=cases_history_samples,
+  list(cases=cases_history_samples %>% dplyr::select(-reporting_piece_index),
        Rt=Rt_samples,
-       reporting=reporting_samples)
+       reporting=reporting_samples %>% dplyr::relocate("reporting_piece_index", "mean", "sd", "iteration"))
 }
 
 #' Combines Markov chains across multiple runs of mcmc_single
@@ -753,7 +754,7 @@ mcmc <- function(
 
   if(nchains==1) {
     res <- mcmc_single(niterations,
-                       snapshot_with_Rt_index_df,
+                       data,
                        priors,
                        serial_parameters,
                        initial_cases_true,
@@ -776,7 +777,7 @@ mcmc <- function(
 
         f_run_single <- function() {
           mcmc_single(niterations,
-                      snapshot_with_Rt_index_df,
+                      data,
                       priors,
                       serial_parameters,
                       initial_cases_true,
@@ -804,7 +805,7 @@ mcmc <- function(
     } else {
       for(i in seq_along(1:nchains)) {
         res <- mcmc_single(niterations,
-                           snapshot_with_Rt_index_df,
+                           data,
                            priors,
                            serial_parameters,
                            initial_cases_true,

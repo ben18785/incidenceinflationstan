@@ -44,7 +44,7 @@ estimates of the true number of cases with each onset time.}
 \item{initial_reporting_parameters}{provides initial guesses of the mean and
 sd of the reporting delay distribution(s). These can be either a named with two named elements
 ('mean', 'sd') for a time-invariant reporting delay or a tibble with three columns:
-'reporting_index', 'mean', 'sd' (where the number of indices corresponds to the number
+'reporting_piece_index', 'mean', 'sd' (where the number of indices corresponds to the number
 provided in the data frame).}
 
 \item{initial_Rt}{initial guess of the Rt values in each of the piecewise segments.

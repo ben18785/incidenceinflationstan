@@ -194,19 +194,19 @@ df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
 test_that("observation_process_all_times_logp works ok for single reporting parameter index", {
 
   df <- df %>%
-    mutate(reporting_piece_index=1)
+    dplyr::mutate(reporting_piece_index=1)
 
   # reporting parameters must be in tibble form when it reaches observation_process_all_times_logp
   r_params <- list(mean=2, sd=4)
   expect_error(observation_process_all_times_logp(df, r_params))
 
   # reporting parameters must contain reporting_piece_index column
-  r_params <- tibble(mean=r_params$mean, sd=r_params$sd)
+  r_params <- dplyr::tibble(mean=r_params$mean, sd=r_params$sd)
   expect_error(observation_process_all_times_logp(df, r_params))
 
   # check that log probabilities of subperiods add up to overall
   r_params <- r_params %>%
-    mutate(reporting_piece_index=1)
+    dplyr::mutate(reporting_piece_index=1)
   logp <- observation_process_all_times_logp(df, r_params)
   df1 <- df %>% dplyr::filter(time_onset==1)
   logp1 <- observation_process_logp(df1, df1$cases_true[1],
@@ -246,7 +246,7 @@ test_that("observation_process_all_times_logp works ok for single reporting para
 test_that("observation_process_all_times_logp works ok for multiple reporting parameter index", {
 
   # check that log-p is additive over different pieces
-  r_params <- tibble(mean=c(5, 10), sd=c(3, 2)) %>%
+  r_params <- dplyr::tibble(mean=c(5, 10), sd=c(3, 2)) %>%
     dplyr::mutate(reporting_piece_index=c(1, 2))
   df <- df %>%
     dplyr::mutate(reporting_piece_index=c(rep(1, 3), rep(2, 3)))
@@ -266,12 +266,12 @@ test_that("observation_process_all_times_logp works ok for multiple reporting pa
 
   # check that logp -Inf if any of means or sds < 0
   r_params_e <- r_params %>%
-    mutate(mean=c(1, -2))
+    dplyr::mutate(mean=c(1, -2))
   logp <- observation_process_all_times_logp(df, r_params_e)
   expect_equal(logp, -Inf)
 
   r_params_e <- r_params %>%
-    mutate(sd=c(1, -2))
+    dplyr::mutate(sd=c(1, -2))
   logp <- observation_process_all_times_logp(df, r_params_e)
   expect_equal(logp, -Inf)
 })

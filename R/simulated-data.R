@@ -237,6 +237,7 @@ observed_cases <- function(cases_true, reporting_parameters,
 
   d_max <- length(cases_true)
   for(t in 1:d_max){
+
     a_max <- min(c(d_max, t + days_max_follow_up))
     obs_time <- seq(t, a_max, 1)
     reporting_parameters_current <- list(mean=reporting_parameters$mean[t],

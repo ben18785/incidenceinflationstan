@@ -118,7 +118,7 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
 #'
 #' @param snapshot_with_true_cases_df a tibble with four columns:
 #' time_onset, time_reported, cases_reported, cases_true
-#' @param reporting_parameters
+#' @param reporting_parameters a tibble with columns: 'reporting_piece_index', 'mean', 'sd'
 #'
 #' @return a log probability
 #' @importFrom rlang .data

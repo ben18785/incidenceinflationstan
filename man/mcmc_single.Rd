@@ -23,7 +23,7 @@ mcmc_single(
 \item{niterations}{number of MCMC iterations to run or number of iterative maximisations to run}
 
 \item{snapshot_with_Rt_index_df}{a tibble with four columns: time_onset, time_reported,
-cases_reported, Rt_index; an optional fifth column can be provided named reporting_index,
+cases_reported, Rt_index; an optional fifth column can be provided named reporting_piece_index,
 which specifies which reporting distribubtion each onset time corresponds to}
 
 \item{priors}{a named list with: 'Rt', 'reporting', 'max_cases'. These take
@@ -44,7 +44,7 @@ estimates of the true number of cases with each onset time.}
 \item{initial_reporting_parameters}{provides initial guesses of the mean and
 sd of the reporting delay distribution(s). These can be either a named with two named elements
 ('mean', 'sd') for a time-invariant reporting delay or a tibble with three columns:
-'reporting_index', 'mean', 'sd' (where the number of indices corresponds to the number
+'reporting_piece_index', 'mean', 'sd' (where the number of indices corresponds to the number
 provided in the data frame).}
 
 \item{initial_Rt}{initial guess of the Rt values in each of the piecewise segments.

@@ -13,10 +13,7 @@ observation_process_all_times_logp(
 \item{snapshot_with_true_cases_df}{a tibble with four columns:
 time_onset, time_reported, cases_reported, cases_true}
 
-\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
-distribution indicating a single reporting delay distribution for the whole period
-or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
-delay distribution for each time period}
+\item{reporting_parameters}{a tibble with columns: 'reporting_piece_index', 'mean', 'sd'}
 }
 \value{
 a log probability

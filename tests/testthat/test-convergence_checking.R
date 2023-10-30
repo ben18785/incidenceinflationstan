@@ -63,5 +63,5 @@ test_that("check that convert_results_to_posterior_format converts an MCMC resul
     case_names <- purrr::map_chr(seq(1, 100, 1), ~paste0("cases_true_", .))
     expect_true(all.equal(colnames(cases_df), c(".chain", ".iteration", ".draw", case_names)))
     expect_true(all.equal(colnames(Rt_df), c(".chain", ".iteration", ".draw", "Rt_1", "Rt_2", "Rt_3", "Rt_4", "Rt_5")))
-    expect_true(all.equal(colnames(rep_df), c(".chain", ".iteration", ".draw", "mean", "sd")))
+    expect_true(all.equal(colnames(rep_df), c(".chain", ".iteration", ".draw", "reporting_piece_index", "mean", "sd")))
 })
