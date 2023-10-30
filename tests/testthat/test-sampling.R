@@ -122,8 +122,10 @@ test_that("sample_cases_history adds cases_estimated that look reasonable", {
   s_params <- list(mean=5, sd=3)
   df <- generate_snapshots(days_total, Rt_function,
                            s_params, r_params,
-                           kappa=kappa, thinned=T)
+                           kappa=kappa, thinned=T) %>%
+    mutate(reporting_piece_index=1)
   max_cases <- 5000
+  r_params <- tibble(mean=10, sd=3, reporting_piece_index=1)
   df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
   expect_true(all.equal(df_est %>% dplyr::select(-cases_estimated),
                         df))
@@ -153,8 +155,14 @@ maximising", {
   s_params <- list(mean=5, sd=3)
   df <- generate_snapshots(days_total, Rt_function,
                            s_params, r_params,
-                           kappa=kappa, thinned=T)
+                           kappa=kappa, thinned=T) %>%
+    mutate(reporting_piece_index=1)
   max_cases <- 5000
+  r_params <- dplyr::tibble(
+    reporting_piece_index=1,
+    mean=r_params$mean,
+    sd=r_params$sd
+  )
   f_est <- function(i) {
     df_est <- sample_cases_history(df, max_cases, Rt_function,
                          s_params, r_params,
@@ -382,10 +390,74 @@ test_that("metropolis_steps returns multiple steps", {
 test_that("maximise_reporting_logp maximises prob", {
   prior_params <- list(mean_mu=2, mean_sigma=100,
                        sd_mu=2, sd_sigma=100)
+  r_params <- dplyr::tibble(reporting_piece_index=1,
+                            mean=r_params$mean,
+                            sd=r_params$sd)
+  df <- df %>%
+    dplyr::mutate(reporting_piece_index=1)
   output <- maximise_reporting_logp(df, r_params, prior_params)
   expect_true(abs(output$mean - r_params$mean) < 0.4)
   expect_true(abs(output$sd - r_params$sd) < 0.4)
   expect_equal(nrow(output), 1)
+})
+
+test_that("maximise_reporting_logp throws errors with piece info missing", {
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
+
+  # r_params doesn't contain reporting_piece_index
+  df_temp <- df %>%
+    dplyr::mutate(reporting_piece_index=1)
+  expect_error(maximise_reporting_logp(df, r_params, prior_params))
+
+  # df doesn't contain reporting_piece_index
+  r_params <- dplyr::tibble(reporting_piece_index=1,
+                            mean=r_params$mean,
+                            sd=r_params$sd)
+  expect_error(maximise_reporting_logp(df, r_params, prior_params))
+
+})
+
+test_that("maximise_reporting_logp works ok with multiple pieces", {
+  days_total <- 30
+  r_params <- tibble(mean=c(rep(10, 15), rep(3, 15)),
+                     sd=c(rep(3, 15), rep(1, 15)),
+                     time_onset=seq_along(mean)) %>%
+    mutate(reporting_piece_index=c(rep(1, 15), rep(2, 15)))
+  df <- generate_snapshots(days_total, Rt_function,
+                           s_params, r_params,
+                           kappa=kappa, thinned=T)
+  r_params_short <- r_params %>%
+    dplyr::select(time_onset, reporting_piece_index) %>%
+    unique()
+
+  df <- df %>%
+    dplyr::left_join(r_params_short, by="time_onset")
+  r_params <- tibble(reporting_piece_index=c(1, 2),
+                     mean=c(8, 4),
+                     sd=c(4, 2))
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
+  output <- maximise_reporting_logp(df, r_params, prior_params)
+
+  # try optimisation on each subperiod: should yield same
+  r_params_1 <- r_params %>%
+    dplyr::filter(reporting_piece_index==1)
+  df_1 <- df %>%
+    dplyr::filter(reporting_piece_index==1)
+  output_1 <- maximise_reporting_logp(df_1, r_params_1, prior_params)
+  r_params_2 <- r_params %>%
+    dplyr::filter(reporting_piece_index==2)
+  df_2 <- df %>%
+    dplyr::filter(reporting_piece_index==2)
+  output_2 <- maximise_reporting_logp(df_2, r_params_2, prior_params)
+
+  expect_equal(output$mean[1], output_1$mean[1])
+  expect_equal(output$mean[2], output_2$mean[1])
+  expect_equal(output$sd[1], output_1$sd[1])
+  expect_equal(output$sd[2], output_2$sd[1])
+  expect_equal(output$reporting_piece_index[1], output_1$reporting_piece_index[1])
+  expect_equal(output$reporting_piece_index[2], output_2$reporting_piece_index[1])
 })
 
 test_that("sample_reporting produces output of correct shape", {

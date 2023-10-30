@@ -118,13 +118,24 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
 #'
 #' @param snapshot_with_true_cases_df a tibble with four columns:
 #' time_onset, time_reported, cases_reported, cases_true
-#' @inheritParams conditional_cases_logp
+#' @param reporting_parameters
 #'
 #' @return a log probability
 #' @importFrom rlang .data
 observation_process_all_times_logp <- function(
   snapshot_with_true_cases_df,
   reporting_parameters){
+
+  if(methods::is(reporting_parameters, "list"))
+    stop("Reporting parameters should be a tibble not a list.")
+
+  if(!"reporting_piece_index" %in% colnames(reporting_parameters))
+    stop("reporting_parameters must contain a column: 'reporting_piece_index'.")
+
+  reporting_parameters <- snapshot_with_true_cases_df %>%
+    dplyr::left_join(reporting_parameters, by="reporting_piece_index") %>%
+    dplyr::select("time_onset", "mean", "sd") %>%
+    unique()
 
   logp <- 0
   onset_times <- unique(snapshot_with_true_cases_df$time_onset)
@@ -139,7 +150,7 @@ observation_process_all_times_logp <- function(
 
   mu <- reporting_parameters$mean
   sd <- reporting_parameters$sd
-  if(mu < 0 | sd < 0)
+  if(sum(mu < 0) > 0 | sum(sd < 0) > 0)
     return(-Inf)
 
   for(i in seq_along(onset_times)) {
@@ -147,12 +158,14 @@ observation_process_all_times_logp <- function(
     short_df <- snapshot_with_true_cases_df %>%
       dplyr::filter(.data$time_onset==onset_time)
     cases_true <- short_df$cases_true[1]
+    reporting_parameters_current <- list(mean=reporting_parameters$mean[i],
+                                         sd=reporting_parameters$sd[i])
     if(nrow(short_df) > 1) {# handling cases arising today which were reported today
       logp_new <- observation_process_logp(
         short_df,
         cases_true=cases_true,
         day_onset=onset_time,
-        reporting_parameters=reporting_parameters)
+        reporting_parameters=reporting_parameters_current)
       logp <- logp + logp_new
     }
   }

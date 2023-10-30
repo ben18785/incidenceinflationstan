@@ -41,8 +41,11 @@ characterising the serial interval distribution}
 \item{initial_cases_true}{a tibble with two columns: "time_onset" and "cases_true", which represents initial
 estimates of the true number of cases with each onset time.}
 
-\item{initial_reporting_parameters}{a list with two named elements: 'mean', 'sd'
-indicating an initial guess of the mean and sd of the reporting delay distribution}
+\item{initial_reporting_parameters}{provides initial guesses of the mean and
+sd of the reporting delay distribution(s). These can be either a named with two named elements
+('mean', 'sd') for a time-invariant reporting delay or a tibble with three columns:
+'reporting_index', 'mean', 'sd' (where the number of indices corresponds to the number
+provided in the data frame).}
 
 \item{initial_Rt}{initial guess of the Rt values in each of the piecewise segments.
 Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'}
@@ -55,8 +58,8 @@ step sizes for Metropolis step}
 \item{p_gamma_cutoff}{a p value (0 <= p <= 1) indicating the threshold above which
 we deem certainty}
 
-\item{maximise}{whether to estimate MAP values of parameters (if true) or
-sample parameter values using MCMC (if false). By default this is false.}
+\item{maximise}{rather than sample a case count give the case count with the
+maximum probability (by default is FALSE)}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true. Disabled when is_parallel is TRUE.}
 

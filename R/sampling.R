@@ -15,6 +15,7 @@ sample_true_cases_single_onset <- function(
   observation_df, cases_history, max_cases,
   Rt, day_onset, serial_parameters, reporting_parameters,
   ndraws=1, maximise=FALSE) {
+
   max_observed_cases <- max(observation_df$cases_reported)
   if(max_observed_cases > max_cases)
     stop("Max possible cases should be (much) greater than max observed cases.")
@@ -47,11 +48,14 @@ max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters) {
 
 #' Draws a possible history (or histories) of cases
 #'
-#' The distribution being drawn from at each time t is given by:
+#' The distribution being drawn from at each onset time t is given by:
 #' \deqn{p(cases_true_t|data, Rt, reporting_params, serial_params) \propto p(data|cases_true, reporting_params)
 #'  p(cases_true_t|cases_true_t_1, cases_true_t_2, ..., Rt, serial_params)}
 #'
-#' @param observation_onset_df a tibble with three columns: time_onset, time_reported, cases_reported
+#' @param observation_onset_df a tibble with four columns: time_onset, time_reported, cases_reported, reporting_piece_index
+#' @param reporting_parameters a tibble with three columns: reporting_piece_index,
+#' mean, sd.
+#' @inheritParams observed_cases
 #' @inheritParams sample_true_cases_single_onset
 #' @inheritParams true_cases
 #' @inheritParams max_uncertain_days
@@ -65,8 +69,22 @@ sample_cases_history <- function(
   p_gamma_cutoff=0.99,
   maximise=FALSE) {
 
-  uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_parameters)
-  start_uncertain_period <- max(observation_onset_df$time_onset) - uncertain_period
+  if(!"reporting_piece_index" %in% colnames(observation_onset_df))
+    stop("observation_onset_df must contain a column: 'reporting_piece_index'.")
+
+  # TODO make this uncertain period determination better; put into separate function
+  latest_onset_time <- max(observation_onset_df$time_onset)
+  df_latest_onset_time <- observation_onset_df %>%
+    dplyr::filter(time_onset==latest_onset_time)
+  reporting_index_latest_onset_time <- df_latest_onset_time$reporting_piece_index[1]
+  reporting_latest_onset_time <- reporting_parameters %>%
+    dplyr::filter(reporting_piece_index == reporting_index_latest_onset_time)
+  reporting_latest_onset_time <- list(mean=reporting_latest_onset_time$mean[1],
+                                      sd=reporting_latest_onset_time$sd[1])
+  uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_latest_onset_time)
+
+  start_uncertain_period <- latest_onset_time - uncertain_period
+
   observation_history_df <- observation_onset_df %>%
     dplyr::group_by(.data$time_onset) %>%
     dplyr::mutate(cases_estimated=ifelse(.data$time_onset < start_uncertain_period,
@@ -76,9 +94,18 @@ sample_cases_history <- function(
   onset_times_uncertain_period <- onset_times[onset_times >= start_uncertain_period]
 
   for(i in seq_along(onset_times_uncertain_period)) {
+
     onset_time <- onset_times_uncertain_period[i]
     snapshots_at_onset_time_df <- observation_history_df %>%
-      dplyr::filter(.data$time_onset==onset_time) %>%
+      dplyr::filter(.data$time_onset==onset_time)
+    reporting_index <- snapshots_at_onset_time_df$reporting_piece_index[1]
+    reporting_parameters_tmp <- reporting_parameters %>%
+      dplyr::filter(reporting_piece_index == reporting_index)
+    reporting_parameters_tmp <- list(
+      mean=reporting_parameters_tmp$mean,
+      sd=reporting_parameters_tmp$sd
+      )
+    snapshots_at_onset_time_df <- snapshots_at_onset_time_df %>%
       dplyr::select("time_reported", "cases_reported")
     pre_observation_df <- observation_history_df %>%
       dplyr::filter(.data$time_onset < onset_time) %>%
@@ -94,7 +121,7 @@ sample_cases_history <- function(
       Rt=Rt,
       day_onset=onset_time,
       serial_parameters=serial_parameters,
-      reporting_parameters=reporting_parameters,
+      reporting_parameters=reporting_parameters_tmp,
       ndraws=1,
       maximise=maximise)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
@@ -232,22 +259,27 @@ sample_Rt <- function(cases_history_df,
 #' Propose new reporting parameters using normal kernel
 #' centered at current values
 #'
-#' @param current_reporting_parameters named list of 'mean' and 'sd' of gamma distribution
-#' characterising the reporting delay distribution
+#' @param current_reporting_parameters a tibble with column names: "reporting_piece_index", "mean", "sd"
 #' @param metropolis_parameters named list of 'mean_step', 'sd_step' containing
 #' step sizes for Metropolis step
 #'
-#' @return list of reporting parameters
+#' @return a tibble with column names: "reporting_piece_index", "mean", "sd"
 propose_reporting_parameters <- function(
   current_reporting_parameters,
   metropolis_parameters) {
+
   mean_now <- current_reporting_parameters$mean
   sd_now <- current_reporting_parameters$sd
   mean_stepsize <- metropolis_parameters$mean_step
   sd_stepsize <- metropolis_parameters$sd_step
-  mean_proposed <- stats::rnorm(1, mean_now, mean_stepsize)
-  sd_proposed <- stats::rnorm(1, sd_now, sd_stepsize)
-  list(mean=mean_proposed, sd=sd_proposed)
+  mean_proposed <- purrr::map_dbl(mean_now, ~stats::rnorm(1, ., mean_stepsize))
+  sd_proposed <- purrr::map_dbl(sd_now, ~stats::rnorm(1, ., sd_stepsize))
+
+  current_reporting_parameters %>%
+    mutate(
+      mean=mean_proposed,
+      sd=sd_proposed
+    )
 }
 
 #' Gamma prior for reporting parameters
@@ -262,16 +294,20 @@ propose_reporting_parameters <- function(
 prior_reporting_parameters <- function(
   current_reporting_parameters,
   prior_parameters) {
+
+  num_reporting_parameters <- max(current_reporting_parameters$reporting_piece_index)
+
+  # assumes that all reporting parameters have same prior
   mean <- current_reporting_parameters$mean
   sd <- current_reporting_parameters$sd
-  logp_mean <- dgamma_mean_sd(mean,
-                              prior_parameters$mean_mu,
-                              prior_parameters$mean_sigma,
-                              log=TRUE)
-  logp_sigma <- dgamma_mean_sd(sd,
-                               prior_parameters$sd_mu,
-                               prior_parameters$sd_sigma,
-                               log=TRUE)
+  logp_mean <- sum(dgamma_mean_sd(mean,
+                                  prior_parameters$mean_mu,
+                                  prior_parameters$mean_sigma,
+                                  log=TRUE))
+  logp_sigma <- sum(dgamma_mean_sd(sd,
+                                   prior_parameters$sd_mu,
+                                   prior_parameters$sd_sigma,
+                                   log=TRUE))
   logp_mean + logp_sigma
 }
 
@@ -282,11 +318,12 @@ prior_reporting_parameters <- function(
 #' @inheritParams propose_reporting_parameters
 #' @inheritParams prior_reporting_parameters
 #'
-#' @return list of reporting parameters
+#' @return a tibble with column names: "reporting_piece_index", "mean", "sd"
 metropolis_step <- function(snapshot_with_true_cases_df,
                             current_reporting_parameters,
                             prior_parameters,
                             metropolis_parameters) {
+
   proposed_reporting_parameters <- propose_reporting_parameters(
     current_reporting_parameters,
     metropolis_parameters)
@@ -316,7 +353,7 @@ metropolis_step <- function(snapshot_with_true_cases_df,
 #' @inheritParams metropolis_step
 #' @param ndraws number of iterates of the Markov chain to simulate
 #'
-#' @return a tibble with three columns: "draw_index", "mean", "sd"
+#' @return a tibble with four columns: "reporting_piece_index", "draw_index", "mean", "sd"
 metropolis_steps <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
@@ -324,8 +361,10 @@ metropolis_steps <- function(
   metropolis_parameters,
   ndraws) {
 
-  m_reporting <- matrix(ncol = 3, nrow = ndraws)
   reporting_parameters <- current_reporting_parameters
+  num_reporting_parameters <- max(reporting_parameters$reporting_piece_index)
+  m_reporting <- matrix(ncol = 4, nrow = ndraws * num_reporting_parameters)
+  k <- 1
   for(i in 1:ndraws) {
     reporting_parameters <- metropolis_step(
       snapshot_with_true_cases_df,
@@ -333,11 +372,15 @@ metropolis_steps <- function(
       prior_parameters,
       metropolis_parameters
     )
-    m_reporting[i, ] <- c(i,
-                          reporting_parameters$mean,
-                          reporting_parameters$sd)
+    for(j in 1:num_reporting_parameters) {
+      m_reporting[k, ] <- c(j,
+                            i,
+                            reporting_parameters$mean[j],
+                            reporting_parameters$sd[j])
+      k <- k + 1
+    }
   }
-  colnames(m_reporting) <- c("draw_index", "mean", "sd")
+  colnames(m_reporting) <- c("reporting_piece_index", "draw_index", "mean", "sd")
   m_reporting <- m_reporting %>%
     dplyr::as_tibble()
   m_reporting
@@ -347,29 +390,65 @@ metropolis_steps <- function(
 #'
 #' @inheritParams metropolis_step
 #'
-#' @return a tibble with three columns: "draw_index", "mean, "sd"
+#' @return a tibble with four columns: "reporting_piece_index", "draw_index", "mean, "sd"
 maximise_reporting_logp <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
   prior_parameters) {
 
-  objective_function <- function(theta) {
-    -observation_process_all_times_logp(
-      snapshot_with_true_cases_df,
-      list(mean=theta[1], sd=theta[2])) +
-      prior_reporting_parameters(
-        list(mean=theta[1], sd=theta[2]),
-        prior_parameters)
+  if(!"reporting_piece_index" %in% colnames(snapshot_with_true_cases_df))
+    stop("snapshot_with_true_cases_df must contain a column: 'reporting_piece_index'.")
+
+  if(!"reporting_piece_index" %in% colnames(current_reporting_parameters))
+    stop("current_reporting_parameters must contain a column: 'reporting_piece_index'.")
+
+  num_reporting_indices <- dplyr::n_distinct(snapshot_with_true_cases_df$reporting_piece_index)
+
+  if(num_reporting_indices == 1) {
+
+    objective_function <- function(theta) {
+      -observation_process_all_times_logp(
+        snapshot_with_true_cases_df,
+        current_reporting_parameters %>%
+          dplyr::mutate(mean=theta[1],
+                        sd=theta[2])) +
+        prior_reporting_parameters(
+          list(mean=theta[1],
+               sd=theta[2],
+               reporting_piece_index=current_reporting_parameters$reporting_piece_index),
+          prior_parameters)
+    }
+
+    start_point <- c(current_reporting_parameters$mean,
+                     current_reporting_parameters$sd)
+    theta <- stats::optim(start_point, objective_function)$par
+    overall_reporting_parameters <- current_reporting_parameters %>%
+      dplyr::mutate(mean=theta[1],
+                    sd=theta[2],
+                    draw_index=1)
+
+  } else {
+
+    # since reporting delays determined only by corresponding onset times
+    # we can optimise each piece separately
+    for(i in 1:num_reporting_indices) {
+
+      df_temp <- snapshot_with_true_cases_df %>%
+        dplyr::filter(reporting_piece_index==i)
+      reporting_piece <- current_reporting_parameters %>%
+        dplyr::filter(reporting_piece_index==i)
+      present_reporting <- maximise_reporting_logp(df_temp, reporting_piece, prior_parameters)
+
+      if(i == 1)
+        overall_reporting_parameters <- present_reporting
+      else
+        overall_reporting_parameters <- overall_reporting_parameters %>%
+        dplyr::bind_rows(present_reporting)
+    }
+
   }
 
-  start_point <- c(current_reporting_parameters$mean,
-                   current_reporting_parameters$sd)
-  theta <- stats::optim(start_point, objective_function)$par
-  reporting_parameters <- list(mean=theta[1],
-                               sd=theta[2])
-  dplyr::tibble(draw_index=1,
-         mean=reporting_parameters$mean,
-         sd=reporting_parameters$sd)
+  overall_reporting_parameters
 }
 
 #' Draw reporting parameter values either by sampling or by
@@ -380,7 +459,7 @@ maximise_reporting_logp <- function(
 #' log-probability; else (default) use Metropolis MCMC
 #' to draw parameters
 #'
-#' @return a tibble with three columns: "draw_index", "mean, "sd"
+#' @return a tibble with four columns: "reporting_piece_index", "draw_index", "mean, "sd"
 #' @export
 sample_reporting <- function(
   snapshot_with_true_cases_df,
@@ -408,8 +487,9 @@ sample_reporting <- function(
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
 #' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
-#' @param snapshot_with_Rt_index_df a tibble with
-#' four columns: time_onset, time_reported, cases_reported, Rt_index
+#' @param snapshot_with_Rt_index_df a tibble with four columns: time_onset, time_reported,
+#' cases_reported, Rt_index; an optional fifth column can be provided named reporting_piece_index,
+#' which specifies which reporting distribubtion each onset time corresponds to
 #' @param priors a named list with: 'Rt', 'reporting', 'max_cases'. These take
 #' the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
 #' the gamma prior for each Rt; 'reporting' is a named list with elements
@@ -426,8 +506,11 @@ sample_reporting <- function(
 #' sample parameter values using MCMC (if false). By default this is false.
 #' @param initial_cases_true a tibble with two columns: "time_onset" and "cases_true", which represents initial
 #' estimates of the true number of cases with each onset time.
-#' @param initial_reporting_parameters a list with two named elements: 'mean', 'sd'
-#' indicating an initial guess of the mean and sd of the reporting delay distribution
+#' @param initial_reporting_parameters provides initial guesses of the mean and
+#' sd of the reporting delay distribution(s). These can be either a named with two named elements
+#' ('mean', 'sd') for a time-invariant reporting delay or a tibble with three columns:
+#' 'reporting_piece_index', 'mean', 'sd' (where the number of indices corresponds to the number
+#' provided in the data frame).
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
@@ -452,17 +535,29 @@ mcmc_single <- function(
   if(sum(cnames %in% expected_names) != 4)
     stop("Incorrect column names in snapshot_with_Rt_index_df")
 
-  if(length(cnames) != 4)
-    stop("There should be only four columns in snapshot_with_Rt_index_df:
-          time_onset, time_reported, cases_reported, Rt_index")
+  if(length(cnames) != 4 & length(cnames) != 5)
+    stop("There should be either four or five columns in snapshot_with_Rt_index_df")
+
+  if(length(cnames) == 5 & !("reporting_piece_index" %in% cnames))
+    stop("The reporting delay indices must be provided through a column named 'reporting_piece_index'")
+
+  # assume if column not supplied then reporting delay same throughout
+  if(!"reporting_piece_index" %in% cnames)
+    snapshot_with_Rt_index_df$reporting_piece_index <- 1
+
+  reporting_current <- initial_reporting_parameters
+  if(methods::is(reporting_current, "list")) # if only a single list provided
+    reporting_parameters <- dplyr::tibble(
+      reporting_piece_index=1,
+      mean=reporting_current$mean,
+      sd=reporting_current$sd
+    )
+  num_reporting_parameters <- max(reporting_current$reporting_piece_index)
 
   df_running <- snapshot_with_Rt_index_df %>%
     dplyr::left_join(initial_cases_true, by = "time_onset") %>%
     dplyr::left_join(initial_Rt, by = "Rt_index")
-  reporting_current <- initial_reporting_parameters
 
-  reporting_samples <- matrix(ncol = 3,
-                              nrow = niterations)
   num_Rts <- nrow(initial_Rt)
   Rt_samples <- matrix(nrow = num_Rts * niterations,
                        ncol = 3)
@@ -495,7 +590,7 @@ mcmc_single <- function(
     Rt_function <- stats::approxfun(Rt_current$time_onset,
                                     Rt_current$Rt)
     df_current <- df_running %>%
-      dplyr::select(time_onset, time_reported, cases_reported)
+      dplyr::select(time_onset, time_reported, cases_reported, reporting_piece_index)
 
     df_temp <- sample_cases_history(
       df_current, max_cases,
@@ -539,16 +634,19 @@ mcmc_single <- function(
       metropolis_parameters=reporting_metropolis_parameters,
       maximise=maximise,
       ndraws=1)
+
     reporting_temp$draw_index <- NULL
     reporting_current <- reporting_temp
-    reporting_samples[i, ] <- c(i,
-                                reporting_current$mean,
-                                reporting_current$sd)
+    reporting_current$iteration <- i
+    if(i == 1)
+      reporting_samples <- reporting_current
+    else
+      reporting_samples <- reporting_samples %>% dplyr::bind_rows(reporting_current)
 
     # update main df used in sampling
     df_running <- df_temp %>%
       dplyr::select(-cases_true) %>%
-      dplyr::left_join(cases_history_df, by = "time_onset") %>%
+      dplyr::left_join(cases_history_df, by = c("time_onset", "reporting_piece_index")) %>%
       dplyr::left_join(df_Rt, by = "Rt_index") %>%
       dplyr::select(-draw_index)
 
@@ -581,9 +679,6 @@ mcmc_single <- function(
   Rt_samples <- Rt_samples %>%
     as.data.frame()
   colnames(Rt_samples) <- c("iteration", "Rt_index", "Rt")
-  reporting_samples <- reporting_samples %>%
-    as.data.frame()
-  colnames(reporting_samples) <- c("iteration", "mean", "sd")
 
   list(cases=cases_history_samples,
        Rt=Rt_samples,
@@ -637,16 +732,7 @@ combine_chains <- function(list_of_results) {
 #' cases
 #' @inheritParams sample_Rt_single_piece
 #' @inheritParams max_uncertain_days
-#' @param reporting_metropolis_parameters named list of 'mean_step', 'sd_step' containing
-#' step sizes for Metropolis step
-#' @param maximise whether to estimate MAP values of parameters (if true) or
-#' sample parameter values using MCMC (if false). By default this is false.
-#' @param initial_cases_true a tibble with two columns: "time_onset" and "cases_true", which represents initial
-#' estimates of the true number of cases with each onset time.
-#' @param initial_reporting_parameters a list with two named elements: 'mean', 'sd'
-#' indicating an initial guess of the mean and sd of the reporting delay distribution
-#' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
-#' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
+#' @inheritParams mcmc_single
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true. Disabled when is_parallel is TRUE.
 #' @param nchains number of Markov chains to run. Defaults to 1
 #' @param is_parallel Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.

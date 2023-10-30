@@ -78,3 +78,107 @@ df %>%
   scale_colour_viridis_c(begin = 0.2)
 ```
 
+Performing inference
+```{r}
+snapshot_with_Rt_index_df <- df
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+
+reporting_pieces <- tibble(
+  time_onset=unique(df$time_onset),
+  reporting_piece_index=c(rep(1, 50), rep(2, 50))
+)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+  select(-cases_true) %>% 
+  left_join(reporting_pieces, by="time_onset")
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.5,
+                      2, 1.5,
+                      3, 0.4,
+                      4, 1.5,
+                      5, 1.5)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- tibble(
+  reporting_piece_index=unique(reporting_pieces$reporting_piece_index)
+) %>% 
+  mutate(
+    mean=c(5, 5),
+    sd=3
+  )
+serial_parameters <- list(mean=5, sd=3)
+Rt_prior <- list(shape=5, rate=5)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=5,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=10000)
+
+res <- mcmc(niterations=50,
+            snapshot_with_Rt_index_df,
+            priors,
+            serial_parameters,
+            initial_cases_true,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+            nchains = 1, is_parallel = FALSE)
+```
+
+```{r}
+max_cases <- 10000
+df_est <- sample_cases_history(snapshot_with_Rt_index_df, max_cases, Rt_function, s_params, initial_reporting_parameters, maximise = F)
+```
+
+```{r}
+res$reporting %>% 
+  group_by(reporting_piece_index) %>% 
+  summarise(mean=median(mean),
+            sd=median(sd))
+
+res$reporting %>% 
+  ggplot(aes(x=iteration, y=mean, colour=as.factor(chain))) +
+  geom_line() +
+  facet_wrap(~reporting_piece_index)
+```
+
+```{r}
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=10,
+                              mean_sigma=100,
+                              sd_mu=10,
+                              sd_sigma=3),
+               max_cases=10000)
+
+df_temp <- df %>%
+  left_join(reporting_pieces)
+initial_reporting_parameters <- tibble(
+  reporting_piece_index=c(1, 2),
+  mean=c(10, 5),
+  sd=3)
+a <- sample_reporting(
+      snapshot_with_true_cases_df=df_temp,
+      current_reporting_parameters=initial_reporting_parameters,
+      prior_parameters=priors$reporting,
+      metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+      maximise=FALSE,
+      ndraws=100)
+
+a %>% 
+  ggplot(aes(x=draw_index, y=mean)) +
+  geom_line() +
+  facet_wrap(~reporting_piece_index)
+
+logp_current <- observation_process_all_times_logp(
+    snapshot_with_true_cases_df=df_temp,
+    reporting_parameters=initial_reporting_parameters %>% mutate(mean=c(10, 3))
+  )
+```
+
