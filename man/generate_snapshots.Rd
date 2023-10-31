@@ -25,8 +25,10 @@ period)}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
+distribution indicating a single reporting delay distribution for the whole period
+or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+delay distribution for each time period}
 
 \item{thinned}{a Boolean indicating whether to thin cases to only informative time points}
 

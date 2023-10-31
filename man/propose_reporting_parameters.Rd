@@ -11,14 +11,13 @@ propose_reporting_parameters(
 )
 }
 \arguments{
-\item{current_reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
 \item{metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
 step sizes for Metropolis step}
 }
 \value{
-list of reporting parameters
+a tibble with column names: "reporting_piece_index", "mean", "sd"
 }
 \description{
 Propose new reporting parameters using normal kernel

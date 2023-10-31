@@ -15,8 +15,7 @@ metropolis_step(
 \item{snapshot_with_true_cases_df}{a tibble with four columns:
 time_onset, time_reported, cases_reported, cases_true}
 
-\item{current_reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
 \item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 'sd_sigma' representing the gamma prior parameters for the mean and sd
@@ -27,7 +26,7 @@ distribution)}
 step sizes for Metropolis step}
 }
 \value{
-list of reporting parameters
+a tibble with column names: "reporting_piece_index", "mean", "sd"
 }
 \description{
 Sample reporting parameters using a single Metropolis step

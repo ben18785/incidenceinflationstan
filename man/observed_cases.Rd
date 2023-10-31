@@ -9,8 +9,10 @@ observed_cases(cases_true, reporting_parameters, days_max_follow_up = 30)
 \arguments{
 \item{cases_true}{a vector of true cases originating each day}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
+distribution indicating a single reporting delay distribution for the whole period
+or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+delay distribution for each time period}
 
 \item{days_max_follow_up}{max days at which to simulate reporting case
 trajectory}

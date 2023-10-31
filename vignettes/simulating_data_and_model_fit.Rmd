@@ -127,9 +127,12 @@ days_total <- 100
 kappa <- 1000
 df <- generate_snapshots(days_total, Rt_function,
                          s_params, r_params,
-                          kappa=kappa, thinned=T)
+                          kappa=kappa, thinned=T) %>% 
+  mutate(reporting_piece_index=1) # denotes a single reporting delay distribution
 max_cases <- 5000
-df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params, maximise = F)
+r_params_df <- tibble(mean=r_params$mean, sd=r_params$sd,
+                      reporting_piece_index=1)
+df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params_df, maximise = F)
 df_est %>% 
   group_by(time_onset) %>% 
   mutate(cases_reported=max(cases_reported)) %>% 
@@ -320,7 +323,8 @@ df_sum <- snapshot_with_Rt_index_df %>%
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
   ungroup() %>% 
   filter(time_onset >= df_sum$time_onset[1]) %>% 
-  mutate(time_onset=time_onset - df_sum$time_onset[1] + 1)
+  mutate(time_reported=time_reported - df_sum$time_onset[1] + 1,
+         time_onset=time_onset - df_sum$time_onset[1] + 1)
 
 initial_cases_true <- snapshot_with_Rt_index_df %>% 
   group_by(time_onset) %>% 
@@ -386,3 +390,4 @@ cases_df %>%
   geom_line() +
   facet_wrap(~time_onset)
 ```
+

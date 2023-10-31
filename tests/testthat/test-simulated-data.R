@@ -256,3 +256,66 @@ test_that("generate_snapshots produces reasonably shaped outputs", {
   expect_equal(mean(colpaste_thinned %in% colpaste_full), 1)
   set.seed(NULL)
 })
+
+test_that("create_reporting_from_single_parameters_df creates a tibble of correct form", {
+
+  r_params <- list(mean=2, sd=4)
+  cases <- c(1, 2, 3, 0, 2)
+  df <- create_reporting_from_single_parameters_df(seq_along(cases), r_params)
+
+  expect_equal(length(cases), nrow(df))
+  x <- seq_along(cases)
+  expect_true(all.equal(x, df$time_onset))
+  expect_true(all.equal(colnames(df), c("time_onset", "mean", "sd")))
+  expect_true(all.equal(df$mean, rep(r_params$mean, length(cases))))
+  expect_true(all.equal(df$sd, rep(r_params$sd, length(cases))))
+})
+
+test_that("observed_cases throws error if wrong dimensions of reporting parameter
+          supplied", {
+
+  cases_true <- cases <- c(1, 2, 3, 0, 2)
+
+  # check throws error if wrong number of rows
+  r_params <- dplyr::tibble(
+    time_onset=c(seq_along(cases_true), 6),
+    mean=rep(3, 6),
+    sd=rep(2, 6)
+  )
+  expect_error(observed_cases(cases_true, r_params))
+})
+
+test_that("generate_snapshots with temporal variation in reporting works", {
+
+  days_total <- 100
+  v_Rt <- c(rep(1.5, 25), rep(1.5, 25), rep(1.3, 50))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  s_params <- list(mean=2, sd=1)
+  kappa <- 1000
+
+  # start with large reporting delays then shrink this near to zero
+  r_params <- dplyr::tibble(
+    time_onset=seq(1, days_total, 1),
+    mean=c(rep(10, 50), rep(0.1, 50)),
+    sd=c(rep(3, 50), rep(0.1, 50))
+  )
+  reported_cases <- generate_snapshots(
+    days_total, Rt_function,
+    s_params, r_params)
+
+  # check proportional difference between reported and true cases at t=40 with
+  # t=90; the former should have much smaller difference
+  t <- 40
+  rep <- reported_cases %>%
+    dplyr::filter(time_onset==t) %>%
+    dplyr::filter(time_reported==(t + 1))
+  ratio_early <- (rep$cases_true - rep$cases_reported) / rep$cases_true
+
+  t <- 90
+  rep <- reported_cases %>%
+    dplyr::filter(time_onset==t) %>%
+    dplyr::filter(time_reported==(t + 1))
+  ratio_late <- (rep$cases_true - rep$cases_reported) / rep$cases_true
+
+  expect_true(ratio_early > ratio_late)
+})

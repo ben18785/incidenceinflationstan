@@ -7,8 +7,7 @@
 prior_reporting_parameters(current_reporting_parameters, prior_parameters)
 }
 \arguments{
-\item{current_reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
-characterising the reporting delay distribution}
+\item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
 \item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 'sd_sigma' representing the gamma prior parameters for the mean and sd

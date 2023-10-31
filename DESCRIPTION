@@ -28,7 +28,8 @@ Imports:
     tidyr,
     matrixStats,
     rlang,
-    lubridate
+    lubridate,
+    methods
 VignetteBuilder: knitr
 Depends: 
     R (>= 2.10)

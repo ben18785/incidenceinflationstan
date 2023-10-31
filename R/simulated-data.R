@@ -192,10 +192,29 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
   I_true[-(1:initial_length)]
 }
 
+#' Creates a reporting parameter tibble with a single set of reporting
+#' parameters
+#'
+#' @param time_onsets a vector of symptom onset times
+#' @inheritParams undetected_prob
+#'
+#' @return a tibble with three columns: 'time_onset', 'mean', 'sd'
+create_reporting_from_single_parameters_df <- function(time_onsets,
+    reporting_parameters) {
+
+  dplyr::tibble(time_onset=time_onsets,
+                mean=reporting_parameters$mean,
+                sd=reporting_parameters$sd
+                )
+}
+
 #' Generate reported case trajectories for each day when cases appear
 #'
 #' @param cases_true a vector of true cases originating each day
-#' @inheritParams undetected_prob
+#' @param reporting_parameters either a named list of 'mean' and 'sd' of gamma
+#' distribution indicating a single reporting delay distribution for the whole period
+#' or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+#' delay distribution for each time period
 #' @param days_max_follow_up max days at which to simulate reporting case
 #' trajectory
 #'
@@ -207,15 +226,27 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
 #' observed_cases(stats::rpois(5, 5), list(mean=5, sd=1))
 observed_cases <- function(cases_true, reporting_parameters,
                            days_max_follow_up=30){
+
+  if(methods::is(reporting_parameters, "list"))
+    reporting_parameters <- create_reporting_from_single_parameters_df(
+      seq_along(cases_true),
+      reporting_parameters)
+
+  if(nrow(reporting_parameters) != length(cases_true))
+    stop("Number of rows in reporting parameters tibble must match number of cases.")
+
   d_max <- length(cases_true)
   for(t in 1:d_max){
+
     a_max <- min(c(d_max, t + days_max_follow_up))
     obs_time <- seq(t, a_max, 1)
+    reporting_parameters_current <- list(mean=reporting_parameters$mean[t],
+                                         sd=reporting_parameters$sd[t])
     cases_obs_trajec <- observed_cases_trajectory(
       cases_true=cases_true[t],
       days_reporting=obs_time,
       day_onset=t,
-      reporting_parameters)
+      reporting_parameters_current)
 
     # stack into data frame containing identifying info
     I_obs_single_onset <- dplyr::tibble(

@@ -122,8 +122,10 @@ test_that("sample_cases_history adds cases_estimated that look reasonable", {
   s_params <- list(mean=5, sd=3)
   df <- generate_snapshots(days_total, Rt_function,
                            s_params, r_params,
-                           kappa=kappa, thinned=T)
+                           kappa=kappa, thinned=T) %>%
+    dplyr::mutate(reporting_piece_index=1)
   max_cases <- 5000
+  r_params <- dplyr::tibble(mean=10, sd=3, reporting_piece_index=1)
   df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
   expect_true(all.equal(df_est %>% dplyr::select(-cases_estimated),
                         df))
@@ -153,8 +155,14 @@ maximising", {
   s_params <- list(mean=5, sd=3)
   df <- generate_snapshots(days_total, Rt_function,
                            s_params, r_params,
-                           kappa=kappa, thinned=T)
+                           kappa=kappa, thinned=T) %>%
+    dplyr::mutate(reporting_piece_index=1)
   max_cases <- 5000
+  r_params <- dplyr::tibble(
+    reporting_piece_index=1,
+    mean=r_params$mean,
+    sd=r_params$sd
+  )
   f_est <- function(i) {
     df_est <- sample_cases_history(df, max_cases, Rt_function,
                          s_params, r_params,
@@ -317,7 +325,7 @@ test_that("sample_Rt returns sensible values", {
 })
 
 test_that("prior_reporting_parameters works ok", {
-  current_reporting_parameters <- list(mean=3, sd=2)
+  current_reporting_parameters <- list(mean=3, sd=2, reporting_piece_index=1)
   prior_params <- list(mean_mu=3, mean_sigma=2,
                        sd_mu=5, sd_sigma=1)
   val <- prior_reporting_parameters(current_reporting_parameters,
@@ -334,7 +342,7 @@ test_that("prior_reporting_parameters works ok", {
 })
 
 test_that("propose_reporting_parameters works ok", {
-  r_params <- list(mean=4, sd=4)
+  r_params <- dplyr::tibble(mean=4, sd=4, reporting_piece_index=1)
   met_params <- list(mean_step=0.1, sd_step=0.2)
   r_params1 <- propose_reporting_parameters(
     r_params, met_params)
@@ -350,12 +358,16 @@ test_that("propose_reporting_parameters works ok", {
 days_total <- 30
 df <- generate_snapshots(days_total, Rt_function,
                          s_params, r_params,
-                         kappa=kappa, thinned=T)
+                         kappa=kappa, thinned=T) %>%
+  dplyr::mutate(reporting_piece_index=1)
 
 test_that("metropolis_step works as expected", {
   met_params <- list(mean_step=0.01, sd_step=0.01)
   prior_params <- list(mean_mu=2, mean_sigma=100,
                        sd_mu=2, sd_sigma=100)
+  r_params <- dplyr::tibble(mean=r_params$mean,
+                     sd=r_params$sd,
+                     reporting_piece_index=1)
   r_params1 <- metropolis_step(df, r_params,
                                prior_params,
                                met_params)
@@ -364,10 +376,14 @@ test_that("metropolis_step works as expected", {
 })
 
 test_that("metropolis_steps returns multiple steps", {
+
   met_params <- list(mean_step=0.01, sd_step=0.01)
   ndraws <- 10
   rep_prior_params <- list(mean_mu=5, sd_mu=3,
                            mean_sigma=5, sd_sigma=3)
+  r_params <- dplyr::tibble(mean=r_params$mean,
+                     sd=r_params$sd,
+                     reporting_piece_index=1)
   output <- metropolis_steps(
     snapshot_with_true_cases_df=df,
     current_reporting_parameters=r_params,
@@ -376,22 +392,94 @@ test_that("metropolis_steps returns multiple steps", {
     ndraws=ndraws)
   expect_equal(nrow(output), ndraws)
   expect_true(all.equal(colnames(output),
-                        c("draw_index", "mean", "sd")))
+                        c("reporting_piece_index", "draw_index", "mean", "sd")))
 })
 
 test_that("maximise_reporting_logp maximises prob", {
   prior_params <- list(mean_mu=2, mean_sigma=100,
                        sd_mu=2, sd_sigma=100)
+  r_params <- dplyr::tibble(reporting_piece_index=1,
+                            mean=r_params$mean,
+                            sd=r_params$sd)
+  df <- df %>%
+    dplyr::mutate(reporting_piece_index=1)
   output <- maximise_reporting_logp(df, r_params, prior_params)
   expect_true(abs(output$mean - r_params$mean) < 0.4)
   expect_true(abs(output$sd - r_params$sd) < 0.4)
   expect_equal(nrow(output), 1)
 })
 
+test_that("maximise_reporting_logp throws errors with piece info missing", {
+
+  df <- df %>%
+    dplyr::select(-"reporting_piece_index")
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
+
+  # r_params doesn't contain reporting_piece_index
+  df_temp <- df %>%
+    dplyr::mutate(reporting_piece_index=1)
+  expect_error(maximise_reporting_logp(df, r_params, prior_params))
+
+  # df doesn't contain reporting_piece_index
+  r_params <- dplyr::tibble(reporting_piece_index=1,
+                            mean=r_params$mean,
+                            sd=r_params$sd)
+  expect_error(maximise_reporting_logp(df, r_params, prior_params))
+
+})
+
+test_that("maximise_reporting_logp works ok with multiple pieces", {
+
+  days_total <- 30
+  r_params <- dplyr::tibble(mean=c(rep(10, 15), rep(3, 15)),
+                     sd=c(rep(3, 15), rep(1, 15)),
+                     time_onset=seq_along(mean)) %>%
+    dplyr::mutate(reporting_piece_index=c(rep(1, 15), rep(2, 15)))
+  df <- generate_snapshots(days_total, Rt_function,
+                           s_params, r_params,
+                           kappa=kappa, thinned=T)
+  r_params_short <- r_params %>%
+    dplyr::select(time_onset, reporting_piece_index) %>%
+    unique()
+
+  df <- df %>%
+    dplyr::left_join(r_params_short, by="time_onset")
+  r_params <- dplyr::tibble(reporting_piece_index=c(1, 2),
+                     mean=c(8, 4),
+                     sd=c(4, 2))
+  prior_params <- list(mean_mu=2, mean_sigma=100,
+                       sd_mu=2, sd_sigma=100)
+  output <- maximise_reporting_logp(df, r_params, prior_params)
+
+  # try optimisation on each subperiod: should yield same
+  r_params_1 <- r_params %>%
+    dplyr::filter(reporting_piece_index==1)
+  df_1 <- df %>%
+    dplyr::filter(reporting_piece_index==1)
+  output_1 <- maximise_reporting_logp(df_1, r_params_1, prior_params)
+  r_params_2 <- r_params %>%
+    dplyr::filter(reporting_piece_index==2)
+  df_2 <- df %>%
+    dplyr::filter(reporting_piece_index==2)
+  output_2 <- maximise_reporting_logp(df_2, r_params_2, prior_params)
+
+  expect_equal(output$mean[1], output_1$mean[1])
+  expect_equal(output$mean[2], output_2$mean[1])
+  expect_equal(output$sd[1], output_1$sd[1])
+  expect_equal(output$sd[2], output_2$sd[1])
+  expect_equal(output$reporting_piece_index[1], output_1$reporting_piece_index[1])
+  expect_equal(output$reporting_piece_index[2], output_2$reporting_piece_index[1])
+})
+
 test_that("sample_reporting produces output of correct shape", {
+
   prior_params <- list(mean_mu=2, mean_sigma=100,
                        sd_mu=2, sd_sigma=100)
   met_params <- list(mean_step=0.01, sd_step=0.01)
+  r_params <- dplyr::tibble(mean=r_params$mean,
+                     sd=r_params$sd,
+                     reporting_piece_index=1)
   output <- sample_reporting(df, r_params, prior_params, met_params)
   expect_equal(nrow(output), 1)
   expect_equal(max(output$draw_index), 1)
@@ -411,11 +499,13 @@ test_that("sample_reporting produces output of correct shape", {
 
 test_that("mcmc produces outputs of correct shape", {
 
+  niter <- 2
   days_total <- 100
   r_params <- list(mean=10, sd=3)
   s_params <- list(mean=5, sd=3)
   v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  Rt_prior <- list(shape=1, rate=1)
   kappa <- 10
   df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                            kappa=kappa)
@@ -438,9 +528,10 @@ test_that("mcmc produces outputs of correct shape", {
     time_onset=seq_along(Rt_indices),
     Rt_index=Rt_indices)
   snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
-    dplyr::left_join(Rt_index_lookup)
+    dplyr::left_join(Rt_index_lookup, by="time_onset") %>%
+    dplyr::mutate(reporting_piece_index=1)
 
-  initial_reporting_parameters <- list(mean=5, sd=3)
+  initial_reporting_parameters <- dplyr::tibble(mean=5, sd=3, reporting_piece_index=1)
   serial_parameters <- list(mean=5, sd=3)
   priors <- list(Rt=Rt_prior,
                  reporting=list(mean_mu=5,
@@ -475,6 +566,20 @@ test_that("mcmc produces outputs of correct shape", {
                     initial_Rt,
                     reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
                     serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+
+  # five columns but not reporting_piece_index
+  wrong_df <- snapshot_with_Rt_index_df %>%
+    dplyr::rename(reporting_piece_index_wrong=reporting_piece_index)
+  expect_error(mcmc(niterations=niter,
+                    wrong_df,
+                    priors,
+                    serial_parameters,
+                    initial_cases_true,
+                    initial_reporting_parameters,
+                    initial_Rt,
+                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+
 
   # test MCMC sampling
   niter <- 5
@@ -516,7 +621,7 @@ test_that("mcmc produces outputs of correct shape", {
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("iteration", "mean", "sd", "chain"),
+  expect_true(all.equal(c("reporting_piece_index", "mean", "sd", "iteration", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
@@ -561,7 +666,7 @@ test_that("mcmc produces outputs of correct shape", {
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("iteration", "mean", "sd", "chain"),
+  expect_true(all.equal(c("reporting_piece_index", "mean", "sd", "iteration", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
@@ -576,6 +681,7 @@ test_that("multiple chains works", {
   s_params <- list(mean=5, sd=3)
   v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  Rt_prior <- list(shape=1, rate=1)
   kappa <- 10
   df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                            kappa=kappa)
