@@ -183,22 +183,20 @@ sample_Rt_single_piece <- function(
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
     onset_time <- onset_times[i]
-    if(onset_time > 1) {
-      true_cases <- short_df %>%
-        dplyr::filter(.data$time_onset == onset_time) %>%
-        dplyr::pull(.data$cases_true)
-      posterior_shape <- posterior_shape + true_cases
-      cases_history <- short_df %>%
-        dplyr::filter(.data$time_onset < onset_time) %>%
-        dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
-        dplyr::pull(.data$cases_true)
-      diff_time <- serial_max - length(cases_history)
-      if(diff_time <= 0)
-        cases_history <- cases_history[1:serial_max]
-      else
-        cases_history <- c(cases_history, rep(0, diff_time))
-      posterior_rate <- posterior_rate + sum(w * cases_history)
-    }
+    true_cases <- short_df %>%
+      dplyr::filter(.data$time_onset == onset_time) %>%
+      dplyr::pull(.data$cases_true)
+    posterior_shape <- posterior_shape + true_cases
+    cases_history <- short_df %>%
+      dplyr::filter(.data$time_onset < onset_time) %>%
+      dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
+      dplyr::pull(.data$cases_true)
+    diff_time <- serial_max - length(cases_history)
+    if(diff_time <= 0)
+      cases_history <- cases_history[1:serial_max]
+    else
+      cases_history <- c(cases_history, rep(0, diff_time))
+    posterior_rate <- posterior_rate + sum(w * cases_history)
   }
   sample_or_maximise_gamma(
     posterior_shape, posterior_rate, ndraws, maximise)
