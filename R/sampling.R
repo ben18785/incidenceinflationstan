@@ -130,6 +130,77 @@ sample_cases_history <- function(
   observation_history_df
 }
 
+construct_w_matrix <- function(w, piece_width) {
+  wmax <- length(w)
+  m_w <- matrix(nrow = )
+}
+
+nb_log_likelihood <- function(R, kappa, w, onset_times, short_df, serial_max) {
+
+  log_prob <- 0
+  for(i in seq_along(onset_times)) {
+
+    onset_time <- onset_times[i]
+    if(onset_time > 1) {
+
+    true_cases <- short_df %>%
+      dplyr::filter(.data$time_onset == onset_time) %>%
+      dplyr::pull(.data$cases_true)
+    cases_history <- short_df %>%
+      dplyr::filter(.data$time_onset < onset_time) %>%
+      dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
+      dplyr::pull(.data$cases_true)
+    diff_time <- serial_max - length(cases_history)
+    if(diff_time <= 0)
+      cases_history <- cases_history[1:serial_max]
+    else
+      cases_history <- c(cases_history, rep(0, diff_time))
+
+    log_prob_tmp <- stats::dnbinom(
+      true_cases, mu=R * sum(w * cases_history), size=kappa,
+      log = TRUE)
+    log_prob <- log_prob + log_prob_tmp
+    }
+  }
+
+  log_prob
+}
+
+sample_nb <- function(prior_shape, prior_rate,
+          posterior_shape, posterior_rate,
+          kappa,
+          w,
+          onset_times,
+          cases_history_df,
+          ndraws,
+          nresamples,
+          serial_max) {
+
+  # sample from Poisson
+  R_proposed <- stats::rgamma(nresamples, posterior_shape, posterior_rate)
+  # log_prior and log_posterior (from Poisson)
+  log_prior <- stats::dgamma(R_proposed, prior_shape, prior_rate,
+                             log=TRUE)
+  log_posterior_poisson <- stats::dgamma(R_proposed, posterior_shape, posterior_rate,
+                                         log=TRUE)
+
+  # calculate unnormalised log-prob from NB model
+  Rt_index <- max(cases_history_df$Rt_index)
+
+  # calculate weights
+  log_ws <- vector(length = nresamples)
+  for(i in 1:nresamples) {
+    log_like <- nb_log_likelihood(R_proposed[i], kappa, w, onset_times, cases_history_df, serial_max)
+    log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
+  }
+  sum_log_p <- matrixStats::logSumExp(log_ws)
+  ws <- exp(log_ws - sum_log_p)
+
+  ids <- sample(1:nresamples, replace=TRUE, prob=ws,
+                size=ndraws)
+  R_proposed[ids]
+}
+
 #' Draws from the gamma distribution or returns the value which maximises
 #' it
 #'
@@ -145,6 +216,7 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
   else
     stats::rgamma(ndraws, shape, rate)
 }
+
 
 #' Sample a single Rt value corresponding to a single piecewise-
 #' constant element of an Rt vector
@@ -163,8 +235,11 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
 sample_Rt_single_piece <- function(
     Rt_piece_index, cases_history_df,
     Rt_prior_parameters, serial_parameters,
+    kappa=NULL,
     serial_max=40, ndraws=1,
-    maximise=FALSE) {
+    maximise=FALSE, is_negative_binomial=FALSE,
+    nresamples=100) {
+
   short_df <- cases_history_df %>%
     dplyr::filter(.data$Rt_index <= Rt_piece_index)
   time_max_post_initial_period <- max(short_df$time_onset) - serial_max
@@ -173,15 +248,14 @@ sample_Rt_single_piece <- function(
   posterior_rate <- Rt_prior_parameters$rate
 
   short_df <- short_df %>%
-    dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
-    dplyr::mutate(is_observed_data=dplyr::if_else(
-      .data$Rt_index == Rt_piece_index, 1, 0))
+    dplyr::mutate(time_after_start = .data$time_onset - serial_max)
   onset_times <- short_df %>%
-    dplyr::filter(.data$is_observed_data == 1) %>%
+    dplyr::filter(.data$Rt_index == Rt_piece_index) %>%
     dplyr::pull(.data$time_onset)
 
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
+
     onset_time <- onset_times[i]
     true_cases <- short_df %>%
       dplyr::filter(.data$time_onset == onset_time) %>%
@@ -198,8 +272,21 @@ sample_Rt_single_piece <- function(
       cases_history <- c(cases_history, rep(0, diff_time))
     posterior_rate <- posterior_rate + sum(w * cases_history)
   }
-  sample_or_maximise_gamma(
-    posterior_shape, posterior_rate, ndraws, maximise)
+
+  if(!is_negative_binomial) {
+    sample_or_maximise_gamma(
+      posterior_shape, posterior_rate, ndraws, maximise)
+  } else {
+    sample_nb(Rt_prior_parameters$shape, Rt_prior_parameters$rate,
+              posterior_shape, posterior_rate,
+              kappa,
+              w,
+              onset_times,
+              short_df,
+              ndraws,
+              nresamples,
+              serial_max)
+  }
 }
 
 
@@ -226,9 +313,12 @@ sample_Rt_single_piece <- function(
 sample_Rt <- function(cases_history_df,
                       Rt_prior_parameters,
                       serial_parameters,
+                      kappa=NULL,
                       serial_max=40,
                       ndraws=1,
-                      maximise=FALSE) {
+                      maximise=FALSE,
+                      is_negative_binomial=FALSE,
+                      nresamples=100) {
   Rt_piece_indices <- unique(cases_history_df$Rt_index)
   num_Rt_pieces <- length(Rt_piece_indices)
   if(maximise)
@@ -242,7 +332,10 @@ sample_Rt <- function(cases_history_df,
     Rt_vals <- sample_Rt_single_piece(
       Rt_piece_index, cases_history_df,
       Rt_prior_parameters, serial_parameters,
-      serial_max, ndraws, maximise=maximise)
+      kappa,
+      serial_max, ndraws, maximise=maximise,
+      is_negative_binomial=is_negative_binomial,
+      nresamples)
     for(j in 1:ndraws) {
       m_draws[k, ] <- c(Rt_piece_index, j, Rt_vals[j])
       k <- k + 1
