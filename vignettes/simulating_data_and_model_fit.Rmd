@@ -166,7 +166,7 @@ Rt_prior <- list(shape=5, rate=5)
 
 Rt_df_nb <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
-  ndraws = 100,
+  ndraws = 1000,
   serial_max = 20,
   is_negative_binomial = TRUE,
   kappa=10,
@@ -174,7 +174,7 @@ Rt_df_nb <- sample_Rt(cases_history_df,
   mutate(method="negative_binomial")
 Rt_df_po <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
-  ndraws = 100,
+  ndraws = 1000,
   serial_max = 20) %>% 
   mutate(method="poisson")
 
@@ -191,6 +191,13 @@ Rt_df_nb %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time") +
   facet_wrap(~method)
+
+a <- Rt_df_nb %>%
+  bind_rows(Rt_df_po) %>%
+  group_by(method, Rt_index) %>%
+  summarise(sd=sd(Rt), lower=quantile(Rt, 0.025), upper=quantile(Rt, 0.975)) %>%
+  ungroup() %>%
+  arrange(Rt_index)
 ```
 
 # Inference on simulated data

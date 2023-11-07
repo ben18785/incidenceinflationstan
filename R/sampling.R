@@ -132,38 +132,32 @@ sample_cases_history <- function(
 
 construct_w_matrix <- function(w, piece_width) {
   wmax <- length(w)
-  m_w <- matrix(nrow = )
+  m_w <- matrix(nrow = piece_width,
+                ncol = (wmax + piece_width - 1))
+  for(i in 1:piece_width) {
+    n_before_zeros <- i - 1
+    n_trailing_zeros <- piece_width - n_before_zeros - 1
+    m_w[i, ] <- c(rep(0, i - 1), w, rep(0, n_trailing_zeros))
+  }
+  m_w
 }
 
 nb_log_likelihood <- function(R, kappa, w, onset_times, short_df, serial_max) {
 
-  log_prob <- 0
-  for(i in seq_along(onset_times)) {
-
-    onset_time <- onset_times[i]
-    if(onset_time > 1) {
-
-    true_cases <- short_df %>%
-      dplyr::filter(.data$time_onset == onset_time) %>%
-      dplyr::pull(.data$cases_true)
-    cases_history <- short_df %>%
-      dplyr::filter(.data$time_onset < onset_time) %>%
-      dplyr::arrange(dplyr::desc(.data$time_onset)) %>%
-      dplyr::pull(.data$cases_true)
-    diff_time <- serial_max - length(cases_history)
-    if(diff_time <= 0)
-      cases_history <- cases_history[1:serial_max]
-    else
-      cases_history <- c(cases_history, rep(0, diff_time))
-
-    log_prob_tmp <- stats::dnbinom(
-      true_cases, mu=R * sum(w * cases_history), size=kappa,
-      log = TRUE)
-    log_prob <- log_prob + log_prob_tmp
-    }
+  piece_width <- length(onset_times)
+  m_w <- construct_w_matrix(w, piece_width)
+  wmax <- length(w)
+  v_i <- rev(short_df$cases_true)[1:(wmax + piece_width)]
+  v_i <- ifelse(!is.na(v_i), v_i, 0) # necessary in case we reach back before start of data
+  v_i_dep <- v_i[1:piece_width]
+  v_i_ind <- v_i[2:(wmax + piece_width)]
+  log_prob <- dnbinom(v_i_dep, mu=(R * m_w %*% v_i_ind), size=kappa,
+          log=TRUE)
+  if(onset_times[1] == 1) { # first case can't be generated from nothing
+    log_prob <- log_prob[1:(length(log_prob) - 1)]
   }
 
-  log_prob
+  sum(log_prob)
 }
 
 sample_nb <- function(prior_shape, prior_rate,
