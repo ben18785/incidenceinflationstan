@@ -8,6 +8,7 @@ maximising}
 sample_reporting(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  logp_current,
   prior_parameters,
   metropolis_parameters,
   maximise = FALSE,
@@ -35,7 +36,10 @@ to draw parameters}
 \item{ndraws}{number of iterates of the Markov chain to simulate}
 }
 \value{
-a tibble with four columns: "reporting_piece_index", "draw_index", "mean, "sd"
+a named list with two elements: 'reporting_parameters', a tibble with
+four columns: "reporting_piece_index", "draw_index", "mean, "sd"; and
+'logp' a value of the log-probability for the current parameter values (which
+is NULL when maximising since this is not used)
 }
 \description{
 Draw reporting parameter values either by sampling or by

@@ -10,9 +10,12 @@ sample_Rt_single_piece(
   cases_history_df,
   Rt_prior_parameters,
   serial_parameters,
+  kappa = NULL,
   serial_max = 40,
   ndraws = 1,
-  maximise = FALSE
+  maximise = FALSE,
+  is_negative_binomial = FALSE,
+  nresamples = 100
 )
 }
 \arguments{
@@ -26,6 +29,8 @@ the gamma prior for Rt}
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
+
+\item{kappa}{over-dispersion parameter of negative binomial}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 

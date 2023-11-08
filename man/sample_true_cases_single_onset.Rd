@@ -13,7 +13,9 @@ sample_true_cases_single_onset(
   serial_parameters,
   reporting_parameters,
   ndraws = 1,
-  maximise = FALSE
+  maximise = FALSE,
+  kappa = NULL,
+  is_negative_binomial = FALSE
 )
 }
 \arguments{
@@ -38,6 +40,8 @@ characterising the reporting delay distribution}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
+
+\item{kappa}{over-dispersion parameter of negative binomial}
 }
 \value{
 a sampled case count arising on a given onset day

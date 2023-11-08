@@ -72,19 +72,27 @@ observation_process_logp <- function(observation_df, cases_true,
 
 #' Determines the probability of a given number of cases given a history of them
 #'
-#' Calculates:
+#' If a Poisson renwal is being used, this calculates:
 #' \deqn{Pois(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
+#'
+#' or the following if a negative-binomial model is used:
+#' \deqn{NB(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
 #'
 #' @inheritParams observed_cases_single
 #' @inheritParams true_cases_single
 #' @inheritParams gamma_discrete_pmf
 #'
 #' @return a log-probability or vector of log-probabilities
-state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters){
+state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters,
+                               kappa=NULL, is_negative_binomial=FALSE){
   t_max <- length(cases_history)
   w <- weights_series(t_max, serial_parameters)
   mean_cases <- expected_cases(Rt=Rt, weights=w, cases_history=cases_history)
-  stats::dpois(cases_true, lambda=mean_cases, log = T)
+
+  if(!is_negative_binomial)
+    stats::dpois(cases_true, lambda=mean_cases, log=TRUE)
+  else
+    stats::dnbinom(cases_true, mu=mean_cases, size=kappa, log=TRUE)
 }
 
 #' Calculates (unnormalised) log-probability of a true case count pertaining to cases arising
@@ -99,7 +107,8 @@ state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters)
 #'
 #' @return an (unnormalised) log-probability or vector of such log-probabilities
 conditional_cases_logp <- function(cases_true, observation_df, cases_history,
-                                   Rt, day_onset, serial_parameters, reporting_parameters) {
+                                   Rt, day_onset, serial_parameters, reporting_parameters,
+                                   kappa=NULL, is_negative_binomial=FALSE) {
 
   logp_observation <- 0
   if(nrow(observation_df) > 1) # handling cases arising today which were reported today
@@ -110,7 +119,9 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
   logp_state <- state_process_logp(cases_true=cases_true,
                                    cases_history=cases_history,
                                    Rt=Rt,
-                                   serial_parameters=serial_parameters)
+                                   serial_parameters=serial_parameters,
+                                   kappa=kappa,
+                                   is_negative_binomial=is_negative_binomial)
   logp_observation + logp_state
 }
 
@@ -171,3 +182,52 @@ observation_process_all_times_logp <- function(
   }
   logp
 }
+
+
+#' Calculates the overall log-probability of cases conditional on their history
+#' and Rt values, assuming a negative-binomial renewal model
+#'
+#' Specifically, this assumes the probability is of the form:
+#'
+#' \deqn{\prod_tau=1^T NB(cases_true_tau|Rt * \sum_s=1^tau-1 w_s cases_true_tau-s, kappa)}
+#'
+#' @param kappa an overdispersion parameter value (if <= 0, returns -Inf)
+#' @param cases_history_rt_df a tibble with three columns: 'time_onset',
+#' 'cases_true' and 'Rt'
+#' @inheritParams state_process_logp
+#'
+#' @return a log-probability value
+state_process_nb_logp_all_onsets <- function(
+    kappa, cases_history_rt_df, serial_parameters) {
+
+  if(kappa <= 0)
+    return(-Inf)
+
+  onset_times <- unique(cases_history_rt_df$time_onset)
+
+  log_p <- 0
+  for(i in seq_along(onset_times)) {
+
+    onset_time <- onset_times[i]
+    if(onset_time > 1) {
+
+      cases_true <- cases_history_rt_df$time_onset[i]
+      pre_observation_df <- cases_history_rt_df %>%
+        dplyr::filter(.data$time_onset < onset_time)
+      cases_history <- pre_observation_df$cases_true
+      Rt <- Rt[i]
+
+      logp_single_onset_time <- state_process_logp(
+        cases_true=cases_true,
+        cases_history=cases_history,
+        Rt=Rt,
+        serial_parameters=serial_parameters,
+        kappa=kappa,
+        is_negative_binomial=TRUE)
+
+      log_p <- log_p + logp_single_onset_time
+    }
+  }
+  log_p
+}
+

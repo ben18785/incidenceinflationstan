@@ -11,7 +11,9 @@ sample_cases_history(
   serial_parameters,
   reporting_parameters,
   p_gamma_cutoff = 0.99,
-  maximise = FALSE
+  maximise = FALSE,
+  kappa = NULL,
+  is_negative_binomial = FALSE
 )
 }
 \arguments{
@@ -32,6 +34,8 @@ we deem certainty}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
+
+\item{kappa}{over-dispersion parameter of negative binomial}
 }
 \value{
 a tibble with an extra cases_estimated column

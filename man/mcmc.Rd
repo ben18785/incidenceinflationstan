@@ -18,7 +18,10 @@ mcmc(
   maximise = FALSE,
   print_to_screen = TRUE,
   nchains = 1,
-  is_parallel = FALSE
+  is_parallel = FALSE,
+  initial_overdispersion = 5,
+  is_negative_binomial = FALSE,
+  overdispersion_metropolis_sd = 0.25
 )
 }
 \arguments{

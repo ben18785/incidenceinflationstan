@@ -12,7 +12,9 @@ conditional_cases_logp(
   Rt,
   day_onset,
   serial_parameters,
-  reporting_parameters
+  reporting_parameters,
+  kappa = NULL,
+  is_negative_binomial = FALSE
 )
 }
 \arguments{
@@ -32,6 +34,8 @@ characterising the serial interval distribution}
 
 \item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
+
+\item{kappa}{over-dispersion parameter of negative binomial}
 }
 \value{
 an (unnormalised) log-probability or vector of such log-probabilities

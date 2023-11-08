@@ -4,7 +4,14 @@
 \alias{state_process_logp}
 \title{Determines the probability of a given number of cases given a history of them}
 \usage{
-state_process_logp(cases_true, cases_history, Rt, serial_parameters)
+state_process_logp(
+  cases_true,
+  cases_history,
+  Rt,
+  serial_parameters,
+  kappa = NULL,
+  is_negative_binomial = FALSE
+)
 }
 \arguments{
 \item{cases_true}{true case count originating on day_onset}
@@ -16,11 +23,17 @@ recent to past}
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
+
+\item{kappa}{over-dispersion parameter of negative binomial}
 }
 \value{
 a log-probability or vector of log-probabilities
 }
 \description{
-Calculates:
+If a Poisson renwal is being used, this calculates:
 \deqn{Pois(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
+}
+\details{
+or the following if a negative-binomial model is used:
+\deqn{NB(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
 }

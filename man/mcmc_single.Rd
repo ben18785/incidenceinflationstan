@@ -16,7 +16,10 @@ mcmc_single(
   serial_max = 40,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
-  print_to_screen = TRUE
+  print_to_screen = TRUE,
+  initial_overdispersion = 5,
+  is_negative_binomial = FALSE,
+  overdispersion_metropolis_sd = 0.25
 )
 }
 \arguments{
@@ -26,14 +29,16 @@ mcmc_single(
 cases_reported, Rt_index; an optional fifth column can be provided named reporting_piece_index,
 which specifies which reporting distribubtion each onset time corresponds to}
 
-\item{priors}{a named list with: 'Rt', 'reporting', 'max_cases'. These take
+\item{priors}{a named list with: 'Rt', 'reporting', 'max_cases' (and optionally
+'overdispersion' if using a negative binomial model). These take
 the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
 the gamma prior for each Rt; 'reporting' is a named list with elements
 'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the gamma
 prior parameters for the mean and sd parameters of the reporting parameters
 (itself described by a gamma distribution); max cases controls the upper
 limit of the discrete uniform distribution representing the prior on true
-cases}
+cases; 'overdispersion' is a named list specifying the mean and sd of a gamma
+prior on this parameter}
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}

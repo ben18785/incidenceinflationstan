@@ -7,6 +7,7 @@
 metropolis_step(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  logp_current,
   prior_parameters,
   metropolis_parameters
 )
@@ -26,7 +27,9 @@ distribution)}
 step sizes for Metropolis step}
 }
 \value{
-a tibble with column names: "reporting_piece_index", "mean", "sd"
+a named list with two elements: 'parameter', a parameter value (which
+may be a non-scalar); and 'logp', the log-probability corresponding to the
+parameter value returned
 }
 \description{
 Sample reporting parameters using a single Metropolis step
