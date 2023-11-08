@@ -10,7 +10,7 @@
 [![codecov](https://codecov.io/gh/ben18785/incidenceinflation/branch/master/graph/badge.svg?token=61D5K98II1)](https://codecov.io/gh/ben18785/incidenceinflation)
 <!-- badges: end -->
 
-The goal of incidenceinflation is to estimate R0 and true incidence
+The goal of incidenceinflation is to estimate `Rt` and true incidence
 given reporting delays.
 
 ## Installation
