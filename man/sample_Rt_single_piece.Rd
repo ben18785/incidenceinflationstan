@@ -40,6 +40,9 @@ characterising the serial interval distribution}
 maximum probability (by default is FALSE)}
 
 \item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
+
+\item{nresamples}{number of importance resamples of Rt to perform if assuming a
+negative binomial model}
 }
 \value{
 a draw (or draws) for Rt

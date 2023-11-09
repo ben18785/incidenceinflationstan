@@ -70,7 +70,12 @@ maximum probability (by default is FALSE)}
 
 \item{is_parallel}{Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.}
 
+\item{initial_overdispersion}{the initial value of the overdispersion parameter if
+assuming a negative binomial sampling model (default to 5).}
+
 \item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
+
+\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

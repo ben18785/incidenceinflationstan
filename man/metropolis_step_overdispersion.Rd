@@ -26,10 +26,12 @@ characterising the serial interval distribution}
 
 \item{prior_overdispersion_parameter}{a named list with elements: 'mean' and
 'sd' denoting the mean and sd of a gamma distribution}
+
+\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
 }
 \value{
-a named list with two elements: 'overdispersion' an overdispersion parameter
-value and 'logp' the log-probability corresponding to the returned parameter
+a named list with two elements: 'overdispersion', an overdispersion parameter
+value and 'logp', the log-probability corresponding to the returned parameter
 set
 }
 \description{

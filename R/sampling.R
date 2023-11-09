@@ -176,7 +176,7 @@ nb_log_likelihood_Rt_piece <- function(Rt, kappa, w, onset_times, cases_df) {
   v_i <- ifelse(!is.na(v_i), v_i, 0) # necessary in case we reach back before start of data
   v_i_dep <- v_i[1:piece_width]
   v_i_ind <- v_i[2:(wmax + piece_width)]
-  log_prob <- dnbinom(v_i_dep, mu=(Rt * m_w %*% v_i_ind), size=kappa,
+  log_prob <- stats::dnbinom(v_i_dep, mu=(Rt * m_w %*% v_i_ind), size=kappa,
           log=TRUE)
   if(onset_times[1] == 1) { # first case can't be generated from nothing
     log_prob <- log_prob[1:(length(log_prob) - 1)]
@@ -244,6 +244,8 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
 #' @inheritParams sample_cases_history
 #' @param ndraws number of draws of Rt
 #' @inheritParams true_cases
+#' @param nresamples number of importance resamples of Rt to perform if assuming a
+#' negative binomial model
 #'
 #' @return a draw (or draws) for Rt
 #' @importFrom rlang .data
@@ -463,6 +465,7 @@ accept_reject <- function(
 #' @inheritParams observation_process_all_times_logp
 #' @inheritParams propose_reporting_parameters
 #' @inheritParams prior_reporting_parameters
+#' @param logp_current the value fo the log-probability at current parameter values
 #'
 #' @return a named list with two elements: 'parameter', a parameter value (which
 #' may be a non-scalar); and 'logp', the log-probability corresponding to the
@@ -608,15 +611,15 @@ maximise_reporting_logp <- function(
 #' on the current value
 #'
 #' @param overdispersion_current an overdispersion parameter value (should exceed 0)
-#' @param metropolis_overdispersion_sd the standard deviation of the proposal kernel
+#' @param overdispersion_metropolis_sd the standard deviation of the proposal kernel
 #'
 #' @return a proposed overdispersion parameter value
 propose_overdispersion_parameter <- function(
     overdispersion_current,
-    metropolis_overdispersion_sd) {
+    overdispersion_metropolis_sd) {
 
   stats::rnorm(1, overdispersion_current,
-               metropolis_overdispersion_sd)
+               overdispersion_metropolis_sd)
 }
 
 #' Performs a single Metropolis step to update overdispersion parameter
@@ -669,6 +672,7 @@ metropolis_step_overdispersion <- function(
 #' @param maximise if true choose reporting parameters by maximising
 #' log-probability; else (default) use Metropolis MCMC
 #' to draw parameters
+#' @param logp_current the value of the log-probability at the current parameter values
 #'
 #' @return a named list with two elements: 'reporting_parameters', a tibble with
 #' four columns: "reporting_piece_index", "draw_index", "mean, "sd"; and
@@ -737,6 +741,9 @@ sample_reporting <- function(
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
+#' @param initial_overdispersion the initial value of the overdispersion parameter if
+#' assuming a negative binomial sampling model (default to 5).
+#' @inheritParams metropolis_step_overdispersion
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @importFrom rlang .data
 #' @importFrom methods is
@@ -753,7 +760,7 @@ mcmc_single <- function(
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   initial_overdispersion=5,
   is_negative_binomial=FALSE,
-  overdispersion_metropolis_sd=0.25) {
+  overdispersion_metropolis_sd=0.5) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -987,6 +994,7 @@ mcmc_single <- function(
 #' Combines Markov chains across multiple runs of mcmc_single
 #'
 #' @param list_of_results a list of results, where each element is a result of running mcmc_single
+#' @inheritParams mcmc_single
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" (and if running
 #' a negative binomial model an additional 'overdispersion' element) which
 #' contain estimates of the model parameters with chain index  included

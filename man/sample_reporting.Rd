@@ -21,6 +21,8 @@ time_onset, time_reported, cases_reported, cases_true}
 
 \item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
+\item{logp_current}{the value of the log-probability at the current parameter values}
+
 \item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 'sd_sigma' representing the gamma prior parameters for the mean and sd
 parameters of the reporting parameters (itself described by a gamma

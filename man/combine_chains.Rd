@@ -8,6 +8,8 @@ combine_chains(list_of_results, is_negative_binomial = FALSE)
 }
 \arguments{
 \item{list_of_results}{a list of results, where each element is a result of running mcmc_single}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" (and if running

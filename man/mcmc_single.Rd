@@ -19,7 +19,7 @@ mcmc_single(
   print_to_screen = TRUE,
   initial_overdispersion = 5,
   is_negative_binomial = FALSE,
-  overdispersion_metropolis_sd = 0.25
+  overdispersion_metropolis_sd = 0.5
 )
 }
 \arguments{
@@ -68,7 +68,12 @@ sample parameter values using MCMC (if false). By default this is false.}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true.}
 
+\item{initial_overdispersion}{the initial value of the overdispersion parameter if
+assuming a negative binomial sampling model (default to 5).}
+
 \item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
+
+\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

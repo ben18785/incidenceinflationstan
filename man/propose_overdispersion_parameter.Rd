@@ -7,13 +7,13 @@ on the current value}
 \usage{
 propose_overdispersion_parameter(
   overdispersion_current,
-  metropolis_overdispersion_sd
+  overdispersion_metropolis_sd
 )
 }
 \arguments{
 \item{overdispersion_current}{an overdispersion parameter value (should exceed 0)}
 
-\item{metropolis_overdispersion_sd}{the standard deviation of the proposal kernel}
+\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
 }
 \value{
 a proposed overdispersion parameter value
