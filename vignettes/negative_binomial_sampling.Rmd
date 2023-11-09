@@ -142,14 +142,14 @@ res_1 <- mcmc(niterations=100,
             overdispersion_metropolis_sd = 5)
 ```
 
-Examine approach to overdispersion parameter
+Examine Markov chain sampling of overdispersion parameter
 ```{r}
 res_1$overdispersion %>% 
   ggplot(aes(x=iteration, y=overdispersion)) +
   geom_line()
 ```
 
-
+The negative binomial fits are better calibrated.
 ```{r}
 cases_df <- res_1$cases
 cases_sum_nb <- cases_df %>% 
@@ -175,7 +175,7 @@ cases_sum %>%
   facet_wrap(~model)
 ```
 
-Examine approach to reporting parameters by Markov chain.
+And the reporting parameters estimates look reasonable.
 ```{r}
 res_1$reporting %>% 
   ggplot(aes(x=iteration, y=mean)) +
@@ -201,5 +201,9 @@ rt_poisson <- res$Rt %>%
   mutate(model="Poisson")
 rt_nb
 rt_poisson
+```
+
+```{r}
+results_posterior_format <- convert_results_to_posterior_format(res)
 ```
 

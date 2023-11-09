@@ -128,7 +128,7 @@ sample_cases_history <- function(
       ndraws=1,
       maximise=maximise,
       kappa=kappa,
-      is_negative_binomial=FALSE)
+      is_negative_binomial=is_negative_binomial)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
     observation_history_df$cases_estimated[index_onset_time] <- case
   }
@@ -1088,6 +1088,8 @@ mcmc <- function(
     res$cases$chain <- 1
     res$Rt$chain <- 1
     res$reporting$chain <- 1
+    if(is_negative_binomial)
+      res$overdispersion$chain <- 1
   } else {
 
     list_of_results <- vector(mode = "list", length = nchains)
