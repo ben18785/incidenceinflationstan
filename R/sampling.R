@@ -192,8 +192,7 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           onset_times,
           cases_history_df,
           ndraws,
-          nresamples,
-          serial_max) {
+          nresamples) {
 
   # sample from Poisson
   R_proposed <- stats::rgamma(nresamples, posterior_shape, posterior_rate)
@@ -202,9 +201,6 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
                              log=TRUE)
   log_posterior_poisson <- stats::dgamma(R_proposed, posterior_shape, posterior_rate,
                                          log=TRUE)
-
-  # calculate unnormalised log-prob from NB model
-  Rt_index <- max(cases_history_df$Rt_index)
 
   # calculate weights
   log_ws <- vector(length = nresamples)
@@ -303,8 +299,7 @@ sample_Rt_single_piece <- function(
               onset_times,
               short_df,
               ndraws,
-              nresamples,
-              serial_max)
+              nresamples)
   }
 }
 
@@ -338,6 +333,14 @@ sample_Rt <- function(cases_history_df,
                       maximise=FALSE,
                       is_negative_binomial=FALSE,
                       nresamples=100) {
+
+  if(is_negative_binomial) {
+    if(is.null(kappa)) {
+      stop("Overdispersion parameter must not be null if using a negative binomial model.")
+    } else if(kappa <= 0){
+      stop("Overdispersion parameter must be positive.")
+    }
+  }
   Rt_piece_indices <- unique(cases_history_df$Rt_index)
   num_Rt_pieces <- length(Rt_piece_indices)
   if(maximise)
@@ -354,7 +357,7 @@ sample_Rt <- function(cases_history_df,
       kappa,
       serial_max, ndraws, maximise=maximise,
       is_negative_binomial=is_negative_binomial,
-      nresamples)
+      nresamples=nresamples)
     for(j in 1:ndraws) {
       m_draws[k, ] <- c(Rt_piece_index, j, Rt_vals[j])
       k <- k + 1
@@ -621,9 +624,12 @@ propose_overdispersion_parameter <- function(
 #' @param overdispersion_current current overdispersion parameter value (must exceed 0)
 #' @param logp_current current log-probability value from previous update
 #' @inheritParams state_process_nb_logp_all_onsets
+#' @param prior_overdispersion_parameter a named list with elements: 'mean' and
+#' 'sd' denoting the mean and sd of a gamma distribution
+#' @inheritParams propose_overdispersion_parameter
 #'
-#' @return a named list with two elements: 'overdispersion' an overdispersion parameter
-#' value and 'logp' the log-probability corresponding to the returned parameter
+#' @return a named list with two elements: 'overdispersion', an overdispersion parameter
+#' value and 'logp', the log-probability corresponding to the returned parameter
 #' set
 metropolis_step_overdispersion <- function(
     overdispersion_current,
@@ -647,11 +653,11 @@ metropolis_step_overdispersion <- function(
   ) + logp_prior
 
   list_parameters_logp <- accept_reject(
-    log_p_current, logp_proposed,
+    logp_current, logp_proposed,
     overdispersion_current, overdispersion_proposed)
 
   list(
-    overdispersion=list_parameters_logp$parameters,
+    overdispersion=list_parameters_logp$parameter,
     logp=list_parameters_logp$logp
   )
 }
@@ -677,6 +683,7 @@ sample_reporting <- function(
   metropolis_parameters,
   maximise=FALSE,
   ndraws=1) {
+
   if(maximise) {
     reporting_parameters <- maximise_reporting_logp(
       snapshot_with_true_cases_df,
@@ -769,6 +776,14 @@ mcmc_single <- function(
     stop("Initial overdispersion value (for a negative binomial renewal model) must be positive.")
   overdispersion_current <- initial_overdispersion
 
+  if(is_negative_binomial)
+    if(!"overdispersion" %in% names(priors))
+      stop("If negative binomial model is used a prior must be provided for the overdispersion parameter.")
+
+  if(is_negative_binomial)
+    if(maximise)
+      stop("Maximisation with a negative binomial renewal model is not yet allowed.")
+
   reporting_current <- initial_reporting_parameters
   if(methods::is(reporting_current, "list")) # if only a single list provided
     reporting_current <- dplyr::tibble(
@@ -856,7 +871,7 @@ mcmc_single <- function(
       dplyr::rename(cases_true=cases_estimated)
     if(i == 1) {
       logp_current_reporting <- observation_process_all_times_logp(
-        snapshot_with_true_cases_df=snapshot_with_true_cases_df,
+        snapshot_with_true_cases_df=df_temp,
         reporting_parameters=reporting_current
       ) + prior_reporting_parameters(reporting_current,
                                      priors$reporting)
@@ -869,8 +884,8 @@ mcmc_single <- function(
       metropolis_parameters=reporting_metropolis_parameters,
       maximise=maximise,
       ndraws=1)
-    reporting_temp <- logp_current_reporting$reporting_parameters
-    logp_current_reporting <- logp_current_reporting$logp
+    reporting_temp <- list_reporting_logp$reporting_parameters
+    logp_current_reporting <- list_reporting_logp$logp
     reporting_temp$draw_index <- NULL
     reporting_current <- reporting_temp
     reporting_current$iteration <- i
@@ -893,8 +908,8 @@ mcmc_single <- function(
 
       if(i == 1) {
         logp_prior <- dgamma_mean_sd(overdispersion_current,
-                                     prior_overdispersion_parameter$mean,
-                                     prior_overdispersion_parameter$sd)
+                                     priors$overdispersion$mean,
+                                     priors$overdispersion$sd)
         logp_overdispersion <- state_process_nb_logp_all_onsets(
           overdispersion_current, df_nb_tmp, serial_parameters
         ) + logp_prior
@@ -905,7 +920,7 @@ mcmc_single <- function(
         logp_overdispersion,
         df_nb_tmp,
         serial_parameters,
-        prior_overdispersion_parameter,
+        priors$overdispersion,
         overdispersion_metropolis_sd
       )
       overdispersion_current <- list_parameter_logp$overdispersion
@@ -964,7 +979,7 @@ mcmc_single <- function(
     reporting=reporting_samples)
 
   if(is_negative_binomial)
-    list_results$overdispersion_samples <- overdispersion_samples
+    list_results$overdispersion <- overdispersion_samples
 
   list_results
 }
@@ -1092,7 +1107,10 @@ mcmc <- function(
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
-                      print_to_screen)
+                      print_to_screen,
+                      initial_overdispersion,
+                      is_negative_binomial,
+                      overdispersion_metropolis_sd)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -1128,7 +1146,7 @@ mcmc <- function(
       }
     }
 
-    res <- combine_chains(list_of_results)
+    res <- combine_chains(list_of_results, is_negative_binomial)
   }
 
   res

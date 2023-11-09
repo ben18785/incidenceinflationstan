@@ -23,6 +23,9 @@ metropolis_step_overdispersion(
 
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
+
+\item{prior_overdispersion_parameter}{a named list with elements: 'mean' and
+'sd' denoting the mean and sd of a gamma distribution}
 }
 \value{
 a named list with two elements: 'overdispersion' an overdispersion parameter

@@ -266,7 +266,8 @@ test_that("observation_process_all_times_logp works ok for single reporting para
     2, 2, 0, 55,
     2, 3, 0, 55,
     3, 3, 0, 54
-  )
+  ) %>%
+    dplyr::mutate(reporting_piece_index=1)
   r_params <- r_params %>%
     dplyr::mutate(mean=1, sd=3)
   expect_error(

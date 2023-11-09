@@ -179,8 +179,7 @@ Rt_df_po <- sample_Rt(cases_history_df,
   mutate(method="poisson")
 
 # graph posterior samples vs actual Rt values
-Rt_df_nb %>%
-  bind_rows(Rt_df_po) %>% 
+Rt_df_po %>% 
   right_join(Rt_index_lookup, by = "Rt_index") %>%
   mutate(type="estimated") %>% 
   bind_rows(tibble(Rt=v_Rt, time_onset=seq(1, days_total, 1),
@@ -189,15 +188,7 @@ Rt_df_nb %>%
              y=Rt, group=as.factor(draw_index))) +
   geom_line(data=. %>% filter(type=="estimated"), alpha=0.1) +
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
-  xlab("Onset time") +
-  facet_wrap(~method)
-
-a <- Rt_df_nb %>%
-  bind_rows(Rt_df_po) %>%
-  group_by(method, Rt_index) %>%
-  summarise(sd=sd(Rt), lower=quantile(Rt, 0.025), upper=quantile(Rt, 0.975)) %>%
-  ungroup() %>%
-  arrange(Rt_index)
+  xlab("Onset time")
 ```
 
 # Inference on simulated data
