@@ -775,3 +775,64 @@ test_that("multiple chains works", {
   expect_equal(max(Rt_df$chain), nchains)
   expect_equal(max(rep_df$chain), nchains)
 })
+
+test_that("construct_w_matrix works ok", {
+  w <- c(0.5, 0.25, 0.25)
+  piece_width <- 5
+  m_w <- construct_w_matrix(w, piece_width)
+
+  wmax <- length(w)
+  expect_equal(nrow(m_w), piece_width)
+  expect_equal(ncol(m_w), wmax + piece_width - 1)
+
+  row_sums <- rowSums(m_w)
+  expect_true(sum(row_sums==1) == piece_width)
+})
+
+test_that("nb_log_likelihood_Rt_piece works as expected", {
+
+  w <- c(0.5, 0.25, 0.25)
+  Rt <- 2.2
+  kappa <- 3.5
+  onset_times <- c(4, 5)
+  cases_df <- dplyr::tribble(
+    ~time_onset, ~cases_true,
+    1, 1,
+    2, 3,
+    3, 6,
+    4, 5,
+    5, 3
+  )
+
+  # check throws error if cases_df doesn't have onset times at bottom
+  cases_df_wrong <- cases_df %>%
+    dplyr::arrange(desc(time_onset))
+  expect_error(nb_log_likelihood_Rt_piece(
+    Rt, kappa, w, onset_times, cases_df_wrong)
+  )
+
+  # check works out logp pointwise
+  logp <- nb_log_likelihood_Rt_piece(
+    Rt, kappa, w, onset_times, cases_df
+  )
+  mu <- sum(Rt * w * rev(cases_df$cases_true[1:3]))
+  logp_1 <- dnbinom(cases_df$cases_true[4], mu=mu, size=kappa,
+                    log = TRUE)
+  mu <- sum(Rt * w * rev(cases_df$cases_true[2:4]))
+  logp_2 <- dnbinom(cases_df$cases_true[5], mu=mu, size=kappa,
+                    log = TRUE)
+  expect_equal(logp_1 + logp_2, logp)
+
+  # check onset_time 1 contributes no logp
+  onset_times <- c(1, 2)
+  cases_df <- cases_df %>%
+    dplyr::filter(time_onset %in% onset_times)
+  logp <- nb_log_likelihood_Rt_piece(
+    Rt, kappa, w, onset_times, cases_df
+  )
+  mu <- sum(Rt * w * c(cases_df$cases_true[1], 0, 0))
+  logp_2 <- dnbinom(cases_df$cases_true[2], mu=mu, size=kappa,
+                    log = TRUE)
+  expect_equal(logp, logp_2)
+
+})

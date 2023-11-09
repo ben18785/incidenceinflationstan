@@ -135,6 +135,12 @@ sample_cases_history <- function(
   observation_history_df
 }
 
+#' Constructs a matrix of w vectors
+#'
+#' @param w a vector of weights
+#' @param piece_width the width of an Rt piece
+#'
+#' @return a matrix of ws
 construct_w_matrix <- function(w, piece_width) {
   wmax <- length(w)
   m_w <- matrix(nrow = piece_width,
@@ -147,16 +153,30 @@ construct_w_matrix <- function(w, piece_width) {
   m_w
 }
 
-nb_log_likelihood <- function(R, kappa, w, onset_times, short_df, serial_max) {
+#' Calculates negative-binomial log-likelhood within a single Rt piece
+#'
+#' @param Rt an Rt value for the piece
+#' @param kappa overdispersion parameter
+#' @param w weights corresponding to the generation times
+#' @param onset_times the onset times corresponding to the piece
+#' @param cases_df a tibble with 'cases_true' as a column which has been ordered
+#' so that the latest onset times are at the bottom
+#'
+#' @return a log-likelihood of the piece
+nb_log_likelihood_Rt_piece <- function(Rt, kappa, w, onset_times, cases_df) {
+
+  matches <- match(onset_times, cases_df$time_onset)
+  if(max(matches) != nrow(cases_df))
+    stop("Onset times must be last entries in cases_df.")
 
   piece_width <- length(onset_times)
   m_w <- construct_w_matrix(w, piece_width)
   wmax <- length(w)
-  v_i <- rev(short_df$cases_true)[1:(wmax + piece_width)]
+  v_i <- rev(cases_df$cases_true)[1:(wmax + piece_width)]
   v_i <- ifelse(!is.na(v_i), v_i, 0) # necessary in case we reach back before start of data
   v_i_dep <- v_i[1:piece_width]
   v_i_ind <- v_i[2:(wmax + piece_width)]
-  log_prob <- dnbinom(v_i_dep, mu=(R * m_w %*% v_i_ind), size=kappa,
+  log_prob <- dnbinom(v_i_dep, mu=(Rt * m_w %*% v_i_ind), size=kappa,
           log=TRUE)
   if(onset_times[1] == 1) { # first case can't be generated from nothing
     log_prob <- log_prob[1:(length(log_prob) - 1)]
@@ -165,7 +185,7 @@ nb_log_likelihood <- function(R, kappa, w, onset_times, short_df, serial_max) {
   sum(log_prob)
 }
 
-sample_nb <- function(prior_shape, prior_rate,
+sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           posterior_shape, posterior_rate,
           kappa,
           w,
@@ -189,7 +209,7 @@ sample_nb <- function(prior_shape, prior_rate,
   # calculate weights
   log_ws <- vector(length = nresamples)
   for(i in 1:nresamples) {
-    log_like <- nb_log_likelihood(R_proposed[i], kappa, w, onset_times, cases_history_df, serial_max)
+    log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_history_df)
     log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
   }
   sum_log_p <- matrixStats::logSumExp(log_ws)
@@ -276,7 +296,7 @@ sample_Rt_single_piece <- function(
     sample_or_maximise_gamma(
       posterior_shape, posterior_rate, ndraws, maximise)
   } else {
-    sample_nb(Rt_prior_parameters$shape, Rt_prior_parameters$rate,
+    sample_nb_Rt_piece(Rt_prior_parameters$shape, Rt_prior_parameters$rate,
               posterior_shape, posterior_rate,
               kappa,
               w,
