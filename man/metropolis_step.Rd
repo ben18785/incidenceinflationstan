@@ -7,6 +7,7 @@
 metropolis_step(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  logp_current,
   prior_parameters,
   metropolis_parameters
 )
@@ -17,6 +18,8 @@ time_onset, time_reported, cases_reported, cases_true}
 
 \item{current_reporting_parameters}{a tibble with column names: "reporting_piece_index", "mean", "sd"}
 
+\item{logp_current}{the value fo the log-probability at current parameter values}
+
 \item{prior_parameters}{named list with elements 'mean_mu', 'mean_sigma', 'sd_mu',
 'sd_sigma' representing the gamma prior parameters for the mean and sd
 parameters of the reporting parameters (itself described by a gamma
@@ -26,7 +29,9 @@ distribution)}
 step sizes for Metropolis step}
 }
 \value{
-a tibble with column names: "reporting_piece_index", "mean", "sd"
+a named list with two elements: 'parameter', a parameter value (which
+may be a non-scalar); and 'logp', the log-probability corresponding to the
+parameter value returned
 }
 \description{
 Sample reporting parameters using a single Metropolis step

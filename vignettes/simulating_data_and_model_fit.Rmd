@@ -164,13 +164,22 @@ cases_history_df <- cases_history_df %>%
 # Prior on each Rt segment value
 Rt_prior <- list(shape=5, rate=5)
 
-Rt_df <- sample_Rt(cases_history_df,
+Rt_df_nb <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
   ndraws = 1000,
-  serial_max = 20)
+  serial_max = 20,
+  is_negative_binomial = TRUE,
+  kappa=10,
+  nresamples=1000) %>% 
+  mutate(method="negative_binomial")
+Rt_df_po <- sample_Rt(cases_history_df,
+  Rt_prior, s_params,
+  ndraws = 1000,
+  serial_max = 20) %>% 
+  mutate(method="poisson")
 
 # graph posterior samples vs actual Rt values
-Rt_df %>%
+Rt_df_po %>% 
   right_join(Rt_index_lookup, by = "Rt_index") %>%
   mutate(type="estimated") %>% 
   bind_rows(tibble(Rt=v_Rt, time_onset=seq(1, days_total, 1),

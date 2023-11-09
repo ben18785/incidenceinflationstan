@@ -64,4 +64,28 @@ test_that("check that convert_results_to_posterior_format converts an MCMC resul
     expect_true(all.equal(colnames(cases_df), c(".chain", ".iteration", ".draw", case_names)))
     expect_true(all.equal(colnames(Rt_df), c(".chain", ".iteration", ".draw", "Rt_1", "Rt_2", "Rt_3", "Rt_4", "Rt_5")))
     expect_true(all.equal(colnames(rep_df), c(".chain", ".iteration", ".draw", "mean_1", "sd_1")))
+
+    # check works with negative binomial model
+    priors$overdispersion <- list(mean=5, sd=10)
+    res <- mcmc(niterations=niter,
+                snapshot_with_Rt_index_df,
+                priors,
+                serial_parameters,
+                initial_cases_true,
+                initial_reporting_parameters,
+                initial_Rt,
+                reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+                serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+                nchains=nchains, is_negative_binomial=TRUE)
+    results <- convert_results_to_posterior_format(res)
+    cases_df <- results$cases
+    Rt_df <- results$Rt
+    rep_df <- results$reporting
+    overdispersion_df <- results$overdispersion
+
+    case_names <- purrr::map_chr(seq(1, 100, 1), ~paste0("cases_true_", .))
+    expect_true(all.equal(colnames(cases_df), c(".chain", ".iteration", ".draw", case_names)))
+    expect_true(all.equal(colnames(Rt_df), c(".chain", ".iteration", ".draw", "Rt_1", "Rt_2", "Rt_3", "Rt_4", "Rt_5")))
+    expect_true(all.equal(colnames(rep_df), c(".chain", ".iteration", ".draw", "mean_1", "sd_1")))
+    expect_true(all.equal(colnames(overdispersion_df), c(".chain", ".iteration", ".draw", "overdispersion")))
 })

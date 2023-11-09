@@ -10,9 +10,12 @@ sample_Rt_single_piece(
   cases_history_df,
   Rt_prior_parameters,
   serial_parameters,
+  kappa = NULL,
   serial_max = 40,
   ndraws = 1,
-  maximise = FALSE
+  maximise = FALSE,
+  is_negative_binomial = FALSE,
+  nresamples = 100
 )
 }
 \arguments{
@@ -27,12 +30,19 @@ the gamma prior for Rt}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
+\item{kappa}{overdispersion parameter}
+
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
 \item{ndraws}{number of draws of Rt}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
+
+\item{nresamples}{number of importance resamples of Rt to perform if assuming a
+negative binomial model}
 }
 \value{
 a draw (or draws) for Rt

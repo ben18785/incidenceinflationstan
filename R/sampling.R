@@ -14,14 +14,15 @@
 sample_true_cases_single_onset <- function(
   observation_df, cases_history, max_cases,
   Rt, day_onset, serial_parameters, reporting_parameters,
-  ndraws=1, maximise=FALSE) {
+  ndraws=1, maximise=FALSE, kappa=NULL, is_negative_binomial=FALSE) {
 
   max_observed_cases <- max(observation_df$cases_reported)
   if(max_observed_cases > max_cases)
     stop("Max possible cases should be (much) greater than max observed cases.")
   possible_cases <- max_observed_cases:max_cases
   logps <- conditional_cases_logp(possible_cases, observation_df, cases_history,
-                                  Rt, day_onset, serial_parameters, reporting_parameters)
+                                  Rt, day_onset, serial_parameters, reporting_parameters,
+                                  kappa, is_negative_binomial)
   probs <- exp(logps - matrixStats::logSumExp(logps))
   if(dplyr::last(probs) > 0.01)
     warning(paste0("Cases too few for onset day: ", day_onset,
@@ -67,7 +68,9 @@ sample_cases_history <- function(
   observation_onset_df, max_cases,
   Rt_function, serial_parameters, reporting_parameters,
   p_gamma_cutoff=0.99,
-  maximise=FALSE) {
+  maximise=FALSE,
+  kappa=NULL,
+  is_negative_binomial=FALSE) {
 
   if(!"reporting_piece_index" %in% colnames(observation_onset_df))
     stop("observation_onset_df must contain a column: 'reporting_piece_index'.")
@@ -123,11 +126,94 @@ sample_cases_history <- function(
       serial_parameters=serial_parameters,
       reporting_parameters=reporting_parameters_tmp,
       ndraws=1,
-      maximise=maximise)
+      maximise=maximise,
+      kappa=kappa,
+      is_negative_binomial=is_negative_binomial)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
     observation_history_df$cases_estimated[index_onset_time] <- case
   }
   observation_history_df
+}
+
+#' Constructs a matrix of w vectors
+#'
+#' @param w a vector of weights
+#' @param piece_width the width of an Rt piece
+#'
+#' @return a matrix of ws
+construct_w_matrix <- function(w, piece_width) {
+  wmax <- length(w)
+  m_w <- matrix(nrow = piece_width,
+                ncol = (wmax + piece_width - 1))
+  for(i in 1:piece_width) {
+    n_before_zeros <- i - 1
+    n_trailing_zeros <- piece_width - n_before_zeros - 1
+    m_w[i, ] <- c(rep(0, i - 1), w, rep(0, n_trailing_zeros))
+  }
+  m_w
+}
+
+#' Calculates negative-binomial log-likelhood within a single Rt piece
+#'
+#' @param Rt an Rt value for the piece
+#' @param kappa overdispersion parameter
+#' @param w weights corresponding to the generation times
+#' @param onset_times the onset times corresponding to the piece
+#' @param cases_df a tibble with 'cases_true' as a column which has been ordered
+#' so that the latest onset times are at the bottom
+#'
+#' @return a log-likelihood of the piece
+nb_log_likelihood_Rt_piece <- function(Rt, kappa, w, onset_times, cases_df) {
+
+  matches <- match(onset_times, cases_df$time_onset)
+  if(max(matches) != nrow(cases_df))
+    stop("Onset times must be last entries in cases_df.")
+
+  piece_width <- length(onset_times)
+  m_w <- construct_w_matrix(w, piece_width)
+  wmax <- length(w)
+  v_i <- rev(cases_df$cases_true)[1:(wmax + piece_width)]
+  v_i <- ifelse(!is.na(v_i), v_i, 0) # necessary in case we reach back before start of data
+  v_i_dep <- v_i[1:piece_width]
+  v_i_ind <- v_i[2:(wmax + piece_width)]
+  log_prob <- stats::dnbinom(v_i_dep, mu=(Rt * m_w %*% v_i_ind), size=kappa,
+          log=TRUE)
+  if(onset_times[1] == 1) { # first case can't be generated from nothing
+    log_prob <- log_prob[1:(length(log_prob) - 1)]
+  }
+
+  sum(log_prob)
+}
+
+sample_nb_Rt_piece <- function(prior_shape, prior_rate,
+          posterior_shape, posterior_rate,
+          kappa,
+          w,
+          onset_times,
+          cases_history_df,
+          ndraws,
+          nresamples) {
+
+  # sample from Poisson
+  R_proposed <- stats::rgamma(nresamples, posterior_shape, posterior_rate)
+  # log_prior and log_posterior (from Poisson)
+  log_prior <- stats::dgamma(R_proposed, prior_shape, prior_rate,
+                             log=TRUE)
+  log_posterior_poisson <- stats::dgamma(R_proposed, posterior_shape, posterior_rate,
+                                         log=TRUE)
+
+  # calculate weights
+  log_ws <- vector(length = nresamples)
+  for(i in 1:nresamples) {
+    log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_history_df)
+    log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
+  }
+  sum_log_p <- matrixStats::logSumExp(log_ws)
+  ws <- exp(log_ws - sum_log_p)
+
+  ids <- sample(1:nresamples, replace=TRUE, prob=ws,
+                size=ndraws)
+  R_proposed[ids]
 }
 
 #' Draws from the gamma distribution or returns the value which maximises
@@ -146,6 +232,7 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
     stats::rgamma(ndraws, shape, rate)
 }
 
+
 #' Sample a single Rt value corresponding to a single piecewise-
 #' constant element of an Rt vector
 #'
@@ -157,14 +244,19 @@ sample_or_maximise_gamma <- function(shape, rate, ndraws, maximise=FALSE) {
 #' @inheritParams sample_cases_history
 #' @param ndraws number of draws of Rt
 #' @inheritParams true_cases
+#' @param nresamples number of importance resamples of Rt to perform if assuming a
+#' negative binomial model
 #'
 #' @return a draw (or draws) for Rt
 #' @importFrom rlang .data
 sample_Rt_single_piece <- function(
     Rt_piece_index, cases_history_df,
     Rt_prior_parameters, serial_parameters,
+    kappa=NULL,
     serial_max=40, ndraws=1,
-    maximise=FALSE) {
+    maximise=FALSE, is_negative_binomial=FALSE,
+    nresamples=100) {
+
   short_df <- cases_history_df %>%
     dplyr::filter(.data$Rt_index <= Rt_piece_index)
   time_max_post_initial_period <- max(short_df$time_onset) - serial_max
@@ -173,15 +265,14 @@ sample_Rt_single_piece <- function(
   posterior_rate <- Rt_prior_parameters$rate
 
   short_df <- short_df %>%
-    dplyr::mutate(time_after_start = .data$time_onset - serial_max) %>%
-    dplyr::mutate(is_observed_data=dplyr::if_else(
-      .data$Rt_index == Rt_piece_index, 1, 0))
+    dplyr::mutate(time_after_start = .data$time_onset - serial_max)
   onset_times <- short_df %>%
-    dplyr::filter(.data$is_observed_data == 1) %>%
+    dplyr::filter(.data$Rt_index == Rt_piece_index) %>%
     dplyr::pull(.data$time_onset)
 
   w <- weights_series(serial_max, serial_parameters)
   for(i in seq_along(onset_times)) {
+
     onset_time <- onset_times[i]
     true_cases <- short_df %>%
       dplyr::filter(.data$time_onset == onset_time) %>%
@@ -198,8 +289,20 @@ sample_Rt_single_piece <- function(
       cases_history <- c(cases_history, rep(0, diff_time))
     posterior_rate <- posterior_rate + sum(w * cases_history)
   }
-  sample_or_maximise_gamma(
-    posterior_shape, posterior_rate, ndraws, maximise)
+
+  if(!is_negative_binomial) {
+    sample_or_maximise_gamma(
+      posterior_shape, posterior_rate, ndraws, maximise)
+  } else {
+    sample_nb_Rt_piece(Rt_prior_parameters$shape, Rt_prior_parameters$rate,
+              posterior_shape, posterior_rate,
+              kappa,
+              w,
+              onset_times,
+              short_df,
+              ndraws,
+              nresamples)
+  }
 }
 
 
@@ -226,9 +329,20 @@ sample_Rt_single_piece <- function(
 sample_Rt <- function(cases_history_df,
                       Rt_prior_parameters,
                       serial_parameters,
+                      kappa=NULL,
                       serial_max=40,
                       ndraws=1,
-                      maximise=FALSE) {
+                      maximise=FALSE,
+                      is_negative_binomial=FALSE,
+                      nresamples=100) {
+
+  if(is_negative_binomial) {
+    if(is.null(kappa)) {
+      stop("Overdispersion parameter must not be null if using a negative binomial model.")
+    } else if(kappa <= 0){
+      stop("Overdispersion parameter must be positive.")
+    }
+  }
   Rt_piece_indices <- unique(cases_history_df$Rt_index)
   num_Rt_pieces <- length(Rt_piece_indices)
   if(maximise)
@@ -242,7 +356,10 @@ sample_Rt <- function(cases_history_df,
     Rt_vals <- sample_Rt_single_piece(
       Rt_piece_index, cases_history_df,
       Rt_prior_parameters, serial_parameters,
-      serial_max, ndraws, maximise=maximise)
+      kappa,
+      serial_max, ndraws, maximise=maximise,
+      is_negative_binomial=is_negative_binomial,
+      nresamples=nresamples)
     for(j in 1:ndraws) {
       m_draws[k, ] <- c(Rt_piece_index, j, Rt_vals[j])
       k <- k + 1
@@ -309,41 +426,71 @@ prior_reporting_parameters <- function(
   logp_mean + logp_sigma
 }
 
+#' Performs Metropolis accept-reject step
+#'
+#' @param logp_current current log-probability value
+#' @param logp_proposed proposed log-probability value
+#' @param current_parameters current parameter(s) value
+#' @param proposed_parameters proposed parameter(s) value
+#'
+#' @return a named list with two elements: 'parameter', a parameter value (which
+#' may be a non-scalar); and 'logp', the log-probability corresponding to the
+#' parameter value returned
+accept_reject <- function(
+    logp_current, logp_proposed,
+    current_parameters,
+    proposed_parameters) {
+
+  log_r <- logp_proposed - logp_current
+  log_u <- log(stats::runif(1))
+
+  # nocov start
+  if(log_r > log_u) {
+    new_parameters <- proposed_parameters
+    logp <- logp_proposed
+  } else {
+    new_parameters <- current_parameters
+    logp <- logp_current
+  }
+  # nocov end
+  list(
+    parameter=new_parameters,
+    logp=logp
+  )
+}
+
 
 #' Sample reporting parameters using a single Metropolis step
 #'
 #' @inheritParams observation_process_all_times_logp
 #' @inheritParams propose_reporting_parameters
 #' @inheritParams prior_reporting_parameters
+#' @param logp_current the value fo the log-probability at current parameter values
 #'
-#' @return a tibble with column names: "reporting_piece_index", "mean", "sd"
+#' @return a named list with two elements: 'parameter', a parameter value (which
+#' may be a non-scalar); and 'logp', the log-probability corresponding to the
+#' parameter value returned
 metropolis_step <- function(snapshot_with_true_cases_df,
                             current_reporting_parameters,
+                            logp_current,
                             prior_parameters,
                             metropolis_parameters) {
 
   proposed_reporting_parameters <- propose_reporting_parameters(
     current_reporting_parameters,
     metropolis_parameters)
-  logp_current <- observation_process_all_times_logp(
-    snapshot_with_true_cases_df=snapshot_with_true_cases_df,
-    reporting_parameters=current_reporting_parameters
-  ) + prior_reporting_parameters(current_reporting_parameters,
-                                 prior_parameters)
   logp_proposed <- observation_process_all_times_logp(
     snapshot_with_true_cases_df=snapshot_with_true_cases_df,
     reporting_parameters=proposed_reporting_parameters
   ) + prior_reporting_parameters(proposed_reporting_parameters,
                                  prior_parameters)
 
-  log_r <- logp_proposed - logp_current
-  log_u <- log(stats::runif(1))
-  # nocov start
-  if(log_r > log_u)
-    proposed_reporting_parameters
-  else
-    current_reporting_parameters
-  # nocov end
+  list_parameters_logp <- accept_reject(
+    logp_current, logp_proposed,
+    current_reporting_parameters,
+    proposed_reporting_parameters)
+
+  list_parameters_logp
 }
 
 #' Sample reporting parameters using Metropolis MCMC
@@ -351,10 +498,14 @@ metropolis_step <- function(snapshot_with_true_cases_df,
 #' @inheritParams metropolis_step
 #' @param ndraws number of iterates of the Markov chain to simulate
 #'
-#' @return a tibble with four columns: "reporting_piece_index", "draw_index", "mean", "sd"
+#' @return a named list with two elements: 'reporting_parameters', a tibble with
+#' four columns: "reporting_piece_index", "draw_index", "mean, "sd"; and
+#' 'logp' a value of the log-probability for the current parameter values (which
+#' is NULL when maximising since this is not used)
 metropolis_steps <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  logp_current,
   prior_parameters,
   metropolis_parameters,
   ndraws) {
@@ -364,12 +515,15 @@ metropolis_steps <- function(
   m_reporting <- matrix(ncol = 4, nrow = ndraws * num_reporting_parameters)
   k <- 1
   for(i in 1:ndraws) {
-    reporting_parameters <- metropolis_step(
+    list_parameters_logp <- metropolis_step(
       snapshot_with_true_cases_df,
       reporting_parameters,
+      logp_current,
       prior_parameters,
       metropolis_parameters
     )
+    reporting_parameters <- list_parameters_logp$parameter
+    logp_current <- list_parameters_logp$logp
     for(j in 1:num_reporting_parameters) {
       m_reporting[k, ] <- c(j,
                             i,
@@ -381,7 +535,11 @@ metropolis_steps <- function(
   colnames(m_reporting) <- c("reporting_piece_index", "draw_index", "mean", "sd")
   m_reporting <- m_reporting %>%
     dplyr::as_tibble()
-  m_reporting
+
+  list(
+    reporting_parameters=m_reporting,
+    logp=logp_current
+  )
 }
 
 #' Select reporting parameters by maximising log-probability
@@ -449,6 +607,64 @@ maximise_reporting_logp <- function(
   overall_reporting_parameters
 }
 
+#' Propose new overdispersion parameter by sampling from a normal centered
+#' on the current value
+#'
+#' @param overdispersion_current an overdispersion parameter value (should exceed 0)
+#' @param overdispersion_metropolis_sd the standard deviation of the proposal kernel
+#'
+#' @return a proposed overdispersion parameter value
+propose_overdispersion_parameter <- function(
+    overdispersion_current,
+    overdispersion_metropolis_sd) {
+
+  stats::rnorm(1, overdispersion_current,
+               overdispersion_metropolis_sd)
+}
+
+#' Performs a single Metropolis step to update overdispersion parameter
+#'
+#' @param overdispersion_current current overdispersion parameter value (must exceed 0)
+#' @param logp_current current log-probability value from previous update
+#' @inheritParams state_process_nb_logp_all_onsets
+#' @param prior_overdispersion_parameter a named list with elements: 'mean' and
+#' 'sd' denoting the mean and sd of a gamma distribution
+#' @inheritParams propose_overdispersion_parameter
+#'
+#' @return a named list with two elements: 'overdispersion', an overdispersion parameter
+#' value and 'logp', the log-probability corresponding to the returned parameter
+#' set
+metropolis_step_overdispersion <- function(
+    overdispersion_current,
+    logp_current,
+    cases_history_rt_df,
+    serial_parameters,
+    prior_overdispersion_parameter,
+    overdispersion_metropolis_sd
+    ) {
+
+  overdispersion_proposed <- propose_overdispersion_parameter(
+    overdispersion_current,
+    overdispersion_metropolis_sd
+  )
+
+  logp_prior <- dgamma_mean_sd(overdispersion_proposed,
+                               prior_overdispersion_parameter$mean,
+                               prior_overdispersion_parameter$sd)
+  logp_proposed <- state_process_nb_logp_all_onsets(
+    overdispersion_proposed, cases_history_rt_df, serial_parameters
+  ) + logp_prior
+
+  list_parameters_logp <- accept_reject(
+    logp_current, logp_proposed,
+    overdispersion_current, overdispersion_proposed)
+
+  list(
+    overdispersion=list_parameters_logp$parameter,
+    logp=list_parameters_logp$logp
+  )
+}
+
 #' Draw reporting parameter values either by sampling or by
 #' maximising
 #'
@@ -456,30 +672,41 @@ maximise_reporting_logp <- function(
 #' @param maximise if true choose reporting parameters by maximising
 #' log-probability; else (default) use Metropolis MCMC
 #' to draw parameters
+#' @param logp_current the value of the log-probability at the current parameter values
 #'
-#' @return a tibble with four columns: "reporting_piece_index", "draw_index", "mean, "sd"
+#' @return a named list with two elements: 'reporting_parameters', a tibble with
+#' four columns: "reporting_piece_index", "draw_index", "mean, "sd"; and
+#' 'logp' a value of the log-probability for the current parameter values (which
+#' is NULL when maximising since this is not used)
 #' @export
 sample_reporting <- function(
   snapshot_with_true_cases_df,
   current_reporting_parameters,
+  logp_current,
   prior_parameters,
   metropolis_parameters,
   maximise=FALSE,
   ndraws=1) {
-  if(maximise)
+
+  if(maximise) {
     reporting_parameters <- maximise_reporting_logp(
       snapshot_with_true_cases_df,
       current_reporting_parameters,
       prior_parameters)
-  else
-    reporting_parameters <- metropolis_steps(
+    list_parameter_logp <- list(
+      reporting_parameters=reporting_parameters,
+      logp=NULL)
+  } else {
+    list_parameter_logp <- metropolis_steps(
       snapshot_with_true_cases_df,
       current_reporting_parameters,
+      logp_current,
       prior_parameters,
       metropolis_parameters,
       ndraws=ndraws)
+  }
 
-  reporting_parameters
+  list_parameter_logp
 }
 
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
@@ -488,14 +715,16 @@ sample_reporting <- function(
 #' @param snapshot_with_Rt_index_df a tibble with four columns: time_onset, time_reported,
 #' cases_reported, Rt_index; an optional fifth column can be provided named reporting_piece_index,
 #' which specifies which reporting distribubtion each onset time corresponds to
-#' @param priors a named list with: 'Rt', 'reporting', 'max_cases'. These take
+#' @param priors a named list with: 'Rt', 'reporting', 'max_cases' (and optionally
+#' 'overdispersion' if using a negative binomial model). These take
 #' the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
 #' the gamma prior for each Rt; 'reporting' is a named list with elements
 #' 'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the gamma
 #' prior parameters for the mean and sd parameters of the reporting parameters
 #' (itself described by a gamma distribution); max cases controls the upper
 #' limit of the discrete uniform distribution representing the prior on true
-#' cases
+#' cases; 'overdispersion' is a named list specifying the mean and sd of a gamma
+#' prior on this parameter
 #' @inheritParams sample_Rt_single_piece
 #' @inheritParams max_uncertain_days
 #' @param reporting_metropolis_parameters named list of 'mean_step', 'sd_step' containing
@@ -512,6 +741,9 @@ sample_reporting <- function(
 #' @param initial_Rt initial guess of the Rt values in each of the piecewise segments.
 #' Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'
 #' @param print_to_screen prints progress of MCMC sampling to screen. Defaults to true.
+#' @param initial_overdispersion the initial value of the overdispersion parameter if
+#' assuming a negative binomial sampling model (default to 5).
+#' @inheritParams metropolis_step_overdispersion
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters
 #' @importFrom rlang .data
 #' @importFrom methods is
@@ -525,7 +757,10 @@ mcmc_single <- function(
   initial_reporting_parameters,
   initial_Rt,
   reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
+  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
+  initial_overdispersion=5,
+  is_negative_binomial=FALSE,
+  overdispersion_metropolis_sd=0.5) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -543,6 +778,18 @@ mcmc_single <- function(
   # assume if column not supplied then reporting delay same throughout
   if(!"reporting_piece_index" %in% cnames)
     snapshot_with_Rt_index_df$reporting_piece_index <- 1
+
+  if(initial_overdispersion <= 0)
+    stop("Initial overdispersion value (for a negative binomial renewal model) must be positive.")
+  overdispersion_current <- initial_overdispersion
+
+  if(is_negative_binomial)
+    if(!"overdispersion" %in% names(priors))
+      stop("If negative binomial model is used a prior must be provided for the overdispersion parameter.")
+
+  if(is_negative_binomial)
+    if(maximise)
+      stop("Maximisation with a negative binomial renewal model is not yet allowed.")
 
   reporting_current <- initial_reporting_parameters
   if(methods::is(reporting_current, "list")) # if only a single list provided
@@ -595,7 +842,10 @@ mcmc_single <- function(
       df_current, max_cases,
       Rt_function, serial_parameters, reporting_current,
       p_gamma_cutoff=p_gamma_cutoff,
-      maximise=maximise)
+      maximise=maximise,
+      kappa=overdispersion_current,
+      is_negative_binomial=is_negative_binomial)
+
 
     # sample Rt
     cases_history_df <- df_running %>%
@@ -626,14 +876,23 @@ mcmc_single <- function(
     # sample reporting parameters
     df_temp <- df_temp %>%
       dplyr::rename(cases_true=cases_estimated)
-    reporting_temp <- sample_reporting(
+    if(i == 1) {
+      logp_current_reporting <- observation_process_all_times_logp(
+        snapshot_with_true_cases_df=df_temp,
+        reporting_parameters=reporting_current
+      ) + prior_reporting_parameters(reporting_current,
+                                     priors$reporting)
+    }
+    list_reporting_logp <- sample_reporting(
       snapshot_with_true_cases_df=df_temp,
       current_reporting_parameters=reporting_current,
+      logp_current=logp_current_reporting,
       prior_parameters=priors$reporting,
       metropolis_parameters=reporting_metropolis_parameters,
       maximise=maximise,
       ndraws=1)
-
+    reporting_temp <- list_reporting_logp$reporting_parameters
+    logp_current_reporting <- list_reporting_logp$logp
     reporting_temp$draw_index <- NULL
     reporting_current <- reporting_temp
     reporting_current$iteration <- i
@@ -648,6 +907,42 @@ mcmc_single <- function(
       dplyr::left_join(cases_history_df, by = c("time_onset", "reporting_piece_index")) %>%
       dplyr::left_join(df_Rt, by = "Rt_index") %>%
       dplyr::select(-draw_index)
+
+    if(is_negative_binomial) {
+      df_nb_tmp <- df_running %>%
+        dplyr::select(time_onset, cases_true, Rt) %>%
+        unique()
+
+      if(i == 1) {
+        logp_prior <- dgamma_mean_sd(overdispersion_current,
+                                     priors$overdispersion$mean,
+                                     priors$overdispersion$sd)
+        logp_overdispersion <- state_process_nb_logp_all_onsets(
+          overdispersion_current, df_nb_tmp, serial_parameters
+        ) + logp_prior
+      }
+
+      list_parameter_logp <- metropolis_step_overdispersion(
+        overdispersion_current,
+        logp_overdispersion,
+        df_nb_tmp,
+        serial_parameters,
+        priors$overdispersion,
+        overdispersion_metropolis_sd
+      )
+      overdispersion_current <- list_parameter_logp$overdispersion
+      logp_overdispersion <- list_parameter_logp$logp
+
+      overdipersion_tmp <- dplyr::tibble(
+        overdispersion=overdispersion_current,
+        iteration=i)
+
+      if(i == 1)
+        overdispersion_samples <- overdipersion_tmp
+      else
+        overdispersion_samples <- overdispersion_samples %>%
+          dplyr::bind_rows(overdipersion_tmp)
+    }
 
     # store cases
     cases_history_df <- cases_history_df %>%
@@ -679,17 +974,31 @@ mcmc_single <- function(
     as.data.frame()
   colnames(Rt_samples) <- c("iteration", "Rt_index", "Rt")
 
-  list(cases=cases_history_samples %>% dplyr::select(-reporting_piece_index),
-       Rt=Rt_samples,
-       reporting=reporting_samples %>% dplyr::relocate("reporting_piece_index", "mean", "sd", "iteration"))
+  cases_samples <- cases_history_samples %>%
+    dplyr::select(-reporting_piece_index)
+
+  reporting_samples <- reporting_samples %>%
+    dplyr::relocate("reporting_piece_index", "mean", "sd", "iteration")
+
+  list_results <-list(
+    cases=cases_samples,
+    Rt=Rt_samples,
+    reporting=reporting_samples)
+
+  if(is_negative_binomial)
+    list_results$overdispersion <- overdispersion_samples
+
+  list_results
 }
 
 #' Combines Markov chains across multiple runs of mcmc_single
 #'
 #' @param list_of_results a list of results, where each element is a result of running mcmc_single
-#' @return a named list of three tibbles: "cases", "Rt" and "reporting" which
+#' @inheritParams mcmc_single
+#' @return a named list of three tibbles: "cases", "Rt" and "reporting" (and if running
+#' a negative binomial model an additional 'overdispersion' element) which
 #' contain estimates of the model parameters with chain index  included
-combine_chains <- function(list_of_results) {
+combine_chains <- function(list_of_results, is_negative_binomial=FALSE) {
 
   for(i in seq_along(list_of_results)) {
     res <- list_of_results[[i]]
@@ -700,21 +1009,36 @@ combine_chains <- function(list_of_results) {
     Rt_df$chain <- i
     reporting_df$chain <- i
 
+    if(is_negative_binomial) {
+      overdispersion_df <- res$overdispersion
+      overdispersion_df$chain <- i
+    }
     if(i == 1) {
       cases_overall <- cases_df
       Rt_overall <- Rt_df
       reporting_overall <- reporting_df
+      if(is_negative_binomial) {
+        overdispersion_overall <- overdispersion_df
+      }
     } else {
       cases_overall <- cases_overall %>% dplyr::bind_rows(cases_df)
       Rt_overall <- Rt_overall %>% dplyr::bind_rows(Rt_df)
       reporting_overall <- reporting_overall %>% dplyr::bind_rows(reporting_df)
+      if(is_negative_binomial) {
+        overdispersion_overall <- overdispersion_overall %>% dplyr::bind_rows(overdispersion_df)
+      }
     }
   }
-  list(
+  list_combined <- list(
     cases=cases_overall,
     Rt=Rt_overall,
     reporting=reporting_overall
   )
+
+  if(is_negative_binomial)
+    list_combined$overdispersion <- overdispersion_overall
+
+  list_combined
 }
 
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
@@ -748,7 +1072,10 @@ mcmc <- function(
     initial_Rt,
     reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
     serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
-    nchains=1, is_parallel=FALSE) {
+    nchains=1, is_parallel=FALSE,
+    initial_overdispersion=5,
+    is_negative_binomial=FALSE,
+    overdispersion_metropolis_sd=0.25) {
 
   if(nchains==1) {
     res <- mcmc_single(niterations,
@@ -762,10 +1089,15 @@ mcmc <- function(
                        serial_max,
                        p_gamma_cutoff,
                        maximise,
-                       print_to_screen)
+                       print_to_screen,
+                       initial_overdispersion,
+                       is_negative_binomial,
+                       overdispersion_metropolis_sd)
     res$cases$chain <- 1
     res$Rt$chain <- 1
     res$reporting$chain <- 1
+    if(is_negative_binomial)
+      res$overdispersion$chain <- 1
   } else {
 
     list_of_results <- vector(mode = "list", length = nchains)
@@ -785,7 +1117,10 @@ mcmc <- function(
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
-                      print_to_screen)
+                      print_to_screen,
+                      initial_overdispersion,
+                      is_negative_binomial,
+                      overdispersion_metropolis_sd)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -813,12 +1148,15 @@ mcmc <- function(
                            serial_max,
                            p_gamma_cutoff,
                            maximise,
-                           print_to_screen)
+                           print_to_screen,
+                           initial_overdispersion,
+                           is_negative_binomial,
+                           overdispersion_metropolis_sd)
         list_of_results[[i]] <- res
       }
     }
 
-    res <- combine_chains(list_of_results)
+    res <- combine_chains(list_of_results, is_negative_binomial)
   }
 
   res

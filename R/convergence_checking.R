@@ -46,9 +46,26 @@ convert_results_to_posterior_format <- function(results) {
       names_from=reporting_piece_index,
       values_from = c(mean, sd))
 
-  list(
+  is_negative_binomial <- FALSE
+  if("overdispersion" %in% names(results)) {
+    overdispersion_df <- results$overdispersion
+    overdispersion_df <- overdispersion_df %>%
+      dplyr::rename(
+        .chain=chain,
+        .iteration=iteration
+      ) %>%
+      dplyr::mutate(.draw=.iteration) %>%
+      dplyr::relocate(c(.chain, .iteration, .draw))
+    is_negative_binomial <- TRUE
+  }
+
+  list_results <- list(
     cases=cases_df,
     Rt=Rt_df,
     reporting=rep_df
   )
+
+  if(is_negative_binomial)
+    list_results$overdispersion <- overdispersion_df
+  list_results
 }
