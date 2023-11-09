@@ -74,13 +74,14 @@ observation_process_logp <- function(observation_df, cases_true,
 #'
 #' If a Poisson renwal is being used, this calculates:
 #' \deqn{Pois(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
-#'
 #' or the following if a negative-binomial model is used:
 #' \deqn{NB(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
 #'
 #' @inheritParams observed_cases_single
 #' @inheritParams true_cases_single
 #' @inheritParams gamma_discrete_pmf
+#' @param kappa overdispersion parameter
+#' @param is_negative_binomial if negative-binomial renewal model specified (defaults to FALSE)
 #'
 #' @return a log-probability or vector of log-probabilities
 state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters,
@@ -188,7 +189,6 @@ observation_process_all_times_logp <- function(
 #' and Rt values, assuming a negative-binomial renewal model
 #'
 #' Specifically, this assumes the probability is of the form:
-#'
 #' \deqn{\prod_tau=1^T NB(cases_true_tau|Rt * \sum_s=1^tau-1 w_s cases_true_tau-s, kappa)}
 #'
 #' @param kappa an overdispersion parameter value (if <= 0, returns -Inf)
@@ -211,11 +211,12 @@ state_process_nb_logp_all_onsets <- function(
     onset_time <- onset_times[i]
     if(onset_time > 1) {
 
-      cases_true <- cases_history_rt_df$time_onset[i]
+      cases_true <- cases_history_rt_df$cases_true[i]
       pre_observation_df <- cases_history_rt_df %>%
-        dplyr::filter(.data$time_onset < onset_time)
+        dplyr::filter(.data$time_onset < onset_time) %>%
+        dplyr::arrange(dplyr::desc(.data$time_onset))
       cases_history <- pre_observation_df$cases_true
-      Rt <- Rt[i]
+      Rt <- cases_history_rt_df$Rt[i]
 
       logp_single_onset_time <- state_process_logp(
         cases_true=cases_true,

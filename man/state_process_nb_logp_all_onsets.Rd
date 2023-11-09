@@ -21,7 +21,5 @@ a log-probability value
 }
 \description{
 Specifically, this assumes the probability is of the form:
-}
-\details{
 \deqn{\prod_tau=1^T NB(cases_true_tau|Rt * \sum_s=1^tau-1 w_s cases_true_tau-s, kappa)}
 }

@@ -24,7 +24,9 @@ recent to past}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{kappa}{over-dispersion parameter of negative binomial}
+\item{kappa}{overdispersion parameter}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a log-probability or vector of log-probabilities
@@ -32,8 +34,6 @@ a log-probability or vector of log-probabilities
 \description{
 If a Poisson renwal is being used, this calculates:
 \deqn{Pois(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
-}
-\details{
 or the following if a negative-binomial model is used:
 \deqn{NB(cases_true_t|Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
 }

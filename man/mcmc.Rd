@@ -69,6 +69,8 @@ maximum probability (by default is FALSE)}
 \item{nchains}{number of Markov chains to run. Defaults to 1}
 
 \item{is_parallel}{Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

@@ -67,6 +67,8 @@ we deem certainty}
 sample parameter values using MCMC (if false). By default this is false.}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true.}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

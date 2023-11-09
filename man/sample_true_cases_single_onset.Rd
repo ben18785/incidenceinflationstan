@@ -41,7 +41,9 @@ characterising the reporting delay distribution}
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
 
-\item{kappa}{over-dispersion parameter of negative binomial}
+\item{kappa}{overdispersion parameter}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a sampled case count arising on a given onset day

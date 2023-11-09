@@ -119,6 +119,37 @@ test_that("state_process_logp produces works fine with vectors of true cases", {
   expect_true(all.equal(logps, log_p_long_way))
 })
 
+test_that("state_process_logp works on with a negative binomial model", {
+  s_params <- list(mean=5, sd=2)
+  Rt <- 1
+  t_max <- 20
+  cases_history <- rep(1, t_max)
+  w <- weights_series(t_max, s_params)
+  a_sum <- Rt * sum(w * cases_history)
+  cases_true <- 1
+  logp <- state_process_logp(cases_true, cases_history, Rt, s_params,
+                             is_negative_binomial=TRUE, kappa=2)
+  expect_equal(logp, -1.216395, tolerance = 10^-3)
+})
+
+test_that("state_process_logp produces works fine with vectors of true cases with NB model", {
+  s_params <- list(mean=5, sd=2)
+  Rt <- 1
+  t_max <- 20
+  cases_history <- rep(1, t_max)
+  w <- weights_series(t_max, s_params)
+  a_sum <- Rt * sum(w * cases_history)
+  cases_true <- 1:5
+  logps <- state_process_logp(cases_true, cases_history, Rt, s_params,
+                              is_negative_binomial = TRUE, kappa=2)
+  n <- length(cases_true)
+  log_p_long_way <- vector(length=n)
+  for(i in 1:n)
+    log_p_long_way[i] <- state_process_logp(cases_true[i], cases_history, Rt, s_params,
+                                            is_negative_binomial = TRUE, kappa=2)
+  expect_true(all.equal(logps, log_p_long_way))
+})
+
 test_that("conditional_cases_logp returns reasonable values", {
   observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
                                       cases_reported=c(1, 1, 1))
@@ -274,4 +305,42 @@ test_that("observation_process_all_times_logp works ok for multiple reporting pa
     dplyr::mutate(sd=c(1, -2))
   logp <- observation_process_all_times_logp(df, r_params_e)
   expect_equal(logp, -Inf)
+})
+
+test_that("state_process_nb_logp_all_onsets works ok", {
+  s_params <- list(mean=5, sd=2)
+  cases_history_rt_df <- dplyr::tribble(
+    ~time_onset, ~cases_true, ~Rt,
+    1, 2, 1.5,
+    2, 4, 1.3,
+    3, 5, 1.1
+  )
+  kappa <- 3
+  logp_1 <- state_process_logp(cases_history_rt_df$cases_true[2],
+                               cases_history_rt_df$cases_true[1],
+                               kappa=kappa,
+                               serial_parameters = s_params,
+                               Rt=cases_history_rt_df$Rt[2],
+                               is_negative_binomial=TRUE)
+  logp_2 <- state_process_logp(cases_history_rt_df$cases_true[3],
+                               rev(cases_history_rt_df$cases_true[1:2]),
+                               kappa=kappa,
+                               serial_parameters = s_params,
+                               Rt=cases_history_rt_df$Rt[3],
+                               is_negative_binomial=TRUE)
+  logp_overall <- state_process_nb_logp_all_onsets(kappa=kappa,
+                                   cases_history_rt_df=cases_history_rt_df,
+                                   serial_parameters = s_params)
+  expect_equal(logp_1 + logp_2, logp_overall)
+
+  # returns -Inf if kappa 0 or negative
+  val <- state_process_nb_logp_all_onsets(kappa=0,
+                                   cases_history_rt_df=cases_history_rt_df,
+                                   serial_parameters = s_params)
+  expect_equal(val, -Inf)
+
+  val <- state_process_nb_logp_all_onsets(kappa=-1,
+                                          cases_history_rt_df=cases_history_rt_df,
+                                          serial_parameters = s_params)
+  expect_equal(val, -Inf)
 })

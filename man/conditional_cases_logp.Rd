@@ -35,7 +35,9 @@ characterising the serial interval distribution}
 \item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the reporting delay distribution}
 
-\item{kappa}{over-dispersion parameter of negative binomial}
+\item{kappa}{overdispersion parameter}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 an (unnormalised) log-probability or vector of such log-probabilities

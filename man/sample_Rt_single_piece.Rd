@@ -30,7 +30,7 @@ the gamma prior for Rt}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{kappa}{over-dispersion parameter of negative binomial}
+\item{kappa}{overdispersion parameter}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
@@ -38,6 +38,8 @@ characterising the serial interval distribution}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
+
+\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 }
 \value{
 a draw (or draws) for Rt
