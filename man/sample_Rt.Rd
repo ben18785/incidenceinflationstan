@@ -44,8 +44,8 @@ negative binomial model}
 a tibble with three columns: "Rt_piece_index", "draw_index", "Rt"
 }
 \description{
-Models the renewal process as from a Poisson:
-\deqn{cases_true_t ~ Poisson(Rt * \sum_tau=1^t_max w_t cases_true_t-tau))}
+If the renewal model is specified by a Poisson (the default):
+\deqn{cases_true_t ~ Poisson(Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
 If an Rt value is given a gamma prior, this results in a posterior
 distribution:
 \deqn{Rt ~ gamma(alpha + cases_true_t, beta + \sum_tau=1^t_max w_t cases_true_t-tau))}
@@ -58,4 +58,9 @@ by:
 This function either returns a draw (or draws if ndraws>1) from
 this posterior, or it returns the Rt set that maximises it
 (if maximise=TRUE).
+Alternatively the renewal equation may be specified by a negative binomial distribution:
+\deqn{cases_true_t ~ NB(Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
+where kappa is the overdispersion parameter. In this case, importance sampling
+using the Poisson posterior as the importance distribution is used to
+estimate a negative binomial posterior.
 }

@@ -185,12 +185,24 @@ nb_log_likelihood_Rt_piece <- function(Rt, kappa, w, onset_times, cases_df) {
   sum(log_prob)
 }
 
+#' Uses importance resampling to infer a posterior over Rt under a negative
+#' binomial renewal model
+#'
+#' @param prior_shape Rt prior shape parameter
+#' @param prior_rate Rt prior rate parameter
+#' @param posterior_shape Rt posterior shape parameter
+#' @param posterior_rate Rt posterior rate parameter
+#' @inheritParams nb_log_likelihood_Rt_piece
+#' @param ndraws number of draws of Rt to return
+#' @param nresamples number of resamples used to calculate weights for
+#'
+#' @return a vector of Rt draws
 sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           posterior_shape, posterior_rate,
           kappa,
           w,
           onset_times,
-          cases_history_df,
+          cases_df,
           ndraws,
           nresamples) {
 
@@ -205,7 +217,7 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
   # calculate weights
   log_ws <- vector(length = nresamples)
   for(i in 1:nresamples) {
-    log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_history_df)
+    log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_df)
     log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
   }
   sum_log_p <- matrixStats::logSumExp(log_ws)
@@ -308,8 +320,8 @@ sample_Rt_single_piece <- function(
 
 #' Sample piecewise-constant Rt values
 #'
-#' Models the renewal process as from a Poisson:
-#' \deqn{cases_true_t ~ Poisson(Rt * \sum_tau=1^t_max w_t cases_true_t-tau))}
+#' If the renewal model is specified by a Poisson (the default):
+#' \deqn{cases_true_t ~ Poisson(Rt * \sum_tau=1^t_max w_t cases_true_t-tau)}
 #' If an Rt value is given a gamma prior, this results in a posterior
 #' distribution:
 #' \deqn{Rt ~ gamma(alpha + cases_true_t, beta + \sum_tau=1^t_max w_t cases_true_t-tau))}
@@ -322,6 +334,11 @@ sample_Rt_single_piece <- function(
 #' This function either returns a draw (or draws if ndraws>1) from
 #' this posterior, or it returns the Rt set that maximises it
 #' (if maximise=TRUE).
+#' Alternatively the renewal equation may be specified by a negative binomial distribution:
+#' \deqn{cases_true_t ~ NB(Rt * \sum_tau=1^t_max w_t cases_true_t-tau, kappa)}
+#' where kappa is the overdispersion parameter. In this case, importance sampling
+#' using the Poisson posterior as the importance distribution is used to
+#' estimate a negative binomial posterior.
 #'
 #' @inheritParams sample_Rt_single_piece
 #' @return a tibble with three columns: "Rt_piece_index", "draw_index", "Rt"
