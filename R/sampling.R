@@ -206,22 +206,29 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           ndraws,
           nresamples) {
 
-  # sample from Poisson
-  R_proposed <- stats::rgamma(nresamples, posterior_shape, posterior_rate)
+  # sample from Poisson posterior but with larger sd
+  mu <- posterior_shape / posterior_rate
+  sd <- sqrt(posterior_shape / posterior_rate^2)
+  sd <- sd * (1 + mu / kappa) * 5 # approximate inflation adjustment
+  new_shape <- mu^2 / sd^2
+  new_rate <- new_shape / mu
+  R_proposed <- stats::rgamma(nresamples, new_shape, new_rate)
   # log_prior and log_posterior (from Poisson)
   log_prior <- stats::dgamma(R_proposed, prior_shape, prior_rate,
                              log=TRUE)
-  log_posterior_poisson <- stats::dgamma(R_proposed, posterior_shape, posterior_rate,
+  log_posterior_poisson <- stats::dgamma(R_proposed, new_shape, new_rate,
                                          log=TRUE)
 
   # calculate weights
   log_ws <- vector(length = nresamples)
   for(i in 1:nresamples) {
     log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_df)
+    print(paste0("R: ", R_proposed[i]))
+    print(paste0("log_like: ", log_like))
     log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
   }
-  sum_log_p <- matrixStats::logSumExp(log_ws)
-  ws <- exp(log_ws - sum_log_p)
+  log_sum_p <- matrixStats::logSumExp(log_ws)
+  ws <- exp(log_ws - log_sum_p)
 
   ids <- sample(1:nresamples, replace=TRUE, prob=ws,
                 size=ndraws)
