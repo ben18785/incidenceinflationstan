@@ -206,12 +206,17 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           ndraws,
           nresamples) {
 
-  # sample from Poisson
-  R_proposed <- stats::rgamma(nresamples, posterior_shape, posterior_rate)
+  # sample from Poisson but with fractional sd
+  mu <- posterior_shape / posterior_rate
+  sd <- sqrt(posterior_shape / posterior_rate^2)
+  sd <- sd * (1 + mu / kappa)
+  new_shape <- mu^2 / sd^2
+  new_rate <- new_shape / mu
+  R_proposed <- stats::rgamma(nresamples, new_shape, new_rate)
   # log_prior and log_posterior (from Poisson)
   log_prior <- stats::dgamma(R_proposed, prior_shape, prior_rate,
                              log=TRUE)
-  log_posterior_poisson <- stats::dgamma(R_proposed, posterior_shape, posterior_rate,
+  log_posterior_poisson <- stats::dgamma(R_proposed, new_shape, new_rate,
                                          log=TRUE)
 
   # calculate weights
