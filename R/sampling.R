@@ -883,7 +883,8 @@ mcmc_single <- function(
                        serial_parameters,
                        serial_max,
                        ndraws=1,
-                       maximise=maximise)
+                       maximise=maximise,
+                       is_negative_binomial=is_negative_binomial)
     # nocov start
     if(nrow(df_Rt) != num_Rts)
       stop("Number of Rts outputted not equal to initial Rt dims.")
