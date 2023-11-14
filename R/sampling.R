@@ -1099,8 +1099,6 @@ mcmc <- function(
     is_negative_binomial=FALSE,
     overdispersion_metropolis_sd=0.25) {
 
-  print("hello Ben")
-
   if(nchains==1) {
     res <- mcmc_single(niterations,
                        data,
