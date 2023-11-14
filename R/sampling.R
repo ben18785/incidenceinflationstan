@@ -206,7 +206,6 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
           ndraws,
           nresamples) {
 
-  print("checking!!!")
   # sample from Poisson posterior but with larger sd
   mu <- posterior_shape / posterior_rate
   sd <- sqrt(posterior_shape / posterior_rate^2)
