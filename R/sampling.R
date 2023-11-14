@@ -223,8 +223,6 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
   log_ws <- vector(length = nresamples)
   for(i in 1:nresamples) {
     log_like <- nb_log_likelihood_Rt_piece(R_proposed[i], kappa, w, onset_times, cases_df)
-    print(paste0("R: ", R_proposed[i]))
-    print(paste0("log_like: ", log_like))
     log_ws[i] <- log_like + log_prior[i] - log_posterior_poisson[i]
   }
   log_sum_p <- matrixStats::logSumExp(log_ws)
