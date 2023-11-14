@@ -209,7 +209,7 @@ sample_nb_Rt_piece <- function(prior_shape, prior_rate,
   # sample from Poisson posterior but with larger sd
   mu <- posterior_shape / posterior_rate
   sd <- sqrt(posterior_shape / posterior_rate^2)
-  sd <- sd * (1 + mu / kappa) # approximate inflation adjustment
+  sd <- sd * (1 + mu / kappa) * 10 # approximate inflation adjustment
   new_shape <- mu^2 / sd^2
   new_rate <- new_shape / mu
   R_proposed <- stats::rgamma(nresamples, new_shape, new_rate)
