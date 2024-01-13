@@ -1221,6 +1221,29 @@ mcmc_single <- function(
       k <- k + 1
     }
 
+    if(is_negative_binomial) {
+      overdipersion_tmp <- dplyr::tibble(
+        overdispersion=Rt_reporting_overdispersion_draws$overdispersion,
+        iteration=i)
+
+      if(i == 1)
+        overdispersion_samples <- overdipersion_tmp
+      else
+        overdispersion_samples <- overdispersion_samples %>%
+        dplyr::bind_rows(overdipersion_tmp)
+   }
+
+  # store cases
+  cases_history_df <- cases_history_df %>%
+    dplyr::select(-Rt_index) %>%
+    dplyr::mutate(iteration=i)
+  if(i == 1) {
+    cases_history_samples <- cases_history_df
+  } else {
+    cases_history_samples <- cases_history_samples %>%
+      dplyr::bind_rows(cases_history_df)
+  }
+
     if(print_to_screen) {
       end[i] <- Sys.time()
       utils::setTxtProgressBar(progress_bar, i)
