@@ -1148,8 +1148,14 @@ mcmc_single <- function(
       p_gamma_cutoff=p_gamma_cutoff,
       maximise=maximise,
       kappa=overdispersion_current,
-      is_negative_binomial=is_negative_binomial) %>%
-      rename(cases_true=cases_estimated)
+      is_negative_binomial=is_negative_binomial)
+
+    cases_history_df <- df_running %>%
+      dplyr::select(time_onset, Rt_index) %>%
+      dplyr::left_join(df_temp, by = "time_onset", relationship = "many-to-many") %>%
+      dplyr::select(-c("cases_reported", "time_reported")) %>%
+      dplyr::rename(cases_true=cases_estimated) %>%
+      unique()
 
     df_Rt_index <- df_running %>%
       dplyr::select(time_onset, Rt_index) %>%
@@ -1173,25 +1179,44 @@ mcmc_single <- function(
 
       stan_model <- cmdstanr::cmdstan_model("inst/stan/conditional_renewal.stan")
 
-      step_size_inits <- stan_initialisation(
-        df_temp,
-        current_values,
-        priors,
-        is_negative_binomial,
-        is_rw_prior,
-        serial_parameters,
-        serial_max,
-        is_gamma_delay,
-        stan_model,
-        warmup_steps)
+      # step_size_inits <- stan_initialisation(
+      #   df_temp %>%
+      #     rename(cases_true=cases_estimated),
+      #   current_values,
+      #   priors,
+      #   is_negative_binomial,
+      #   is_rw_prior,
+      #   serial_parameters,
+      #   serial_max,
+      #   is_gamma_delay,
+      #   stan_model,
+      #   warmup_steps)
+      #
+      # step_size <- step_size_inits$step_size
+      # init_fn <- step_size_inits$init
+    }
 
-      step_size <- step_size_inits$step_size
-      init_fn <- step_size_inits$init
+    if(is_negative_binomial) {
+      init_fn <- function() {
+        list(
+          R=current_values$Rt$Rt,
+          theta=matrix(reporting_current[, 4:5], ncol = 2),
+          kappa=overdispersion_current
+        )
+      }
+    } else {
+      init_fn <- function() {
+        list(
+          R=current_values$Rt$Rt,
+          theta=matrix(reporting_current[, 4:5], ncol = 2)
+        )
+      }
     }
 
     Rt_reporting_overdispersion_draws <-
       sample_stan_Rt_reporting_overdispersion(
-        df_temp,
+        df_temp %>%
+          rename(cases_true=cases_estimated),
         current_parameter_values,
         priors,
         is_negative_binomial,
@@ -1233,16 +1258,16 @@ mcmc_single <- function(
         dplyr::bind_rows(overdipersion_tmp)
    }
 
-  # store cases
-  cases_history_df <- cases_history_df %>%
-    dplyr::select(-Rt_index) %>%
-    dplyr::mutate(iteration=i)
-  if(i == 1) {
-    cases_history_samples <- cases_history_df
-  } else {
-    cases_history_samples <- cases_history_samples %>%
-      dplyr::bind_rows(cases_history_df)
-  }
+    # store cases
+    cases_history_df <- cases_history_df %>%
+      dplyr::select(-Rt_index) %>%
+      dplyr::mutate(iteration=i)
+    if(i == 1) {
+      cases_history_samples <- cases_history_df
+    } else {
+      cases_history_samples <- cases_history_samples %>%
+        dplyr::bind_rows(cases_history_df)
+    }
 
     if(print_to_screen) {
       end[i] <- Sys.time()
