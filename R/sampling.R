@@ -731,6 +731,170 @@ sample_reporting <- function(
   list_parameter_logp
 }
 
+extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
+
+  Rt <- rstan::extract(fit, "R")[[1]]
+  n_iterations <- nrow(Rt)
+  Rt <- Rt[n_iterations, ]
+
+  df_Rt <- dplyr::tibble(
+    Rt_index=seq_along(Rt),
+    Rt=Rt
+  )
+
+  reporting_params <- rstan::extract(fit, "theta")[[1]]
+  n_thetas <- dim(reporting_params)[2]
+  reporting_params <- reporting_params[n_iterations, , ]
+
+  if(n_thetas > 1) {
+    df_reporting <- dplyr::tibble(
+      location=reporting_params[, 1],
+      scale=reporting_params[, 2]
+    ) %>%
+      dplyr::mutate(reporting_index=seq_along(location))
+  } else {
+    df_reporting <- dplyr::tibble(
+      location=reporting_params[1],
+      scale=reporting_params[2]
+    ) %>%
+      dplyr::mutate(reporting_index=seq_along(location))
+  }
+
+  df_tmp <- list(Rt=df_Rt,
+       reporting=df_reporting)
+
+  if(is_negative_binomial) {
+    kappa <- rstan::extract(fit, "kappa")[[1]]
+    kappa <- kappa[n_iterations]
+    df_tmp$overdispersion <- kappa
+  }
+
+  df_tmp
+}
+
+
+#' Sample Rt, reporting parameters and the overdispersion parameter (if a negative
+#' binomial model is chosen) using Stan
+#'
+#' @param df a tibble with columns: time_onset, time_reported, cases_reported, cases_true,
+#' reporting_piece_index, Rt_index
+#' @param current_parameter_values a named list with three elements: 'Rt', 'reporting' and 'overdispersion'
+#' @inheritParams mcmc
+#' @param is_rw_prior if true, specify a random walk prior on the Rt values rather
+#' than a gamma prior
+#' @param n_iterations number of MCMC iterations for Stan
+#'
+#' @return a named list with elements: 'Rt', 'reporting' and 'overdispersion'
+#' @export
+#'
+#' @examples
+sample_stan_Rt_reporting_overdispersion <- function(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    n_iterations=1,
+    is_gamma_delay=1,
+    is_first_run=FALSE) {
+
+  df_short <- df %>%
+    dplyr::select(time_onset, Rt_index, cases_true) %>%
+    unique()
+  w <- weights_series(serial_max, serial_parameters)
+
+  prior_Rt <- priors$Rt
+  is_gamma_Rt_prior <- prior_Rt$is_gamma
+  priors_reporting <- priors$reporting
+
+  current_values_R <- current_values$Rt
+  current_values_reporting <- current_values$reporting
+  theta <- matrix(c(current_values_reporting$location,
+                    current_values_reporting$scale),
+                  ncol = 2)
+
+  if(is_negative_binomial) {
+    prior_overdispersion <- priors$overdispersion
+    prior_kappa_a <- prior_overdispersion$location
+    prior_kappa_b <- prior_overdispersion$scale
+
+    current_value_overdispersion <- current_values$overdispersion
+
+    init_fn <- function() {
+      list(
+        R=current_values_R$Rt,
+        theta=theta,
+        kappa=as.array(c(current_value_overdispersion))
+      )
+    }
+
+  } else {
+    prior_kappa_a <- 0
+    prior_kappa_b <- 10
+
+    init_fn <- function() {
+      list(
+        R=current_values_R$Rt,
+        theta=theta
+      )
+    }
+
+  }
+
+  data_stan <- list(
+
+    # data for renewal model
+    N=nrow(df_short),
+    K=max(df_short$Rt_index),
+    window=df_short$Rt_index,
+    C=df_short$cases_true,
+    wmax=serial_max,
+    w=w,
+
+    # data for reporting delay model
+    N_delay=nrow(df),
+    time_reported=df$time_reported,
+    time_onset=df$time_onset,
+    cases_reported=df$cases_reported,
+    cases_true=df$cases_true,
+    n_reporting_window=max(df$reporting_piece_index),
+    reporting_window=df$reporting_piece_index,
+
+    # options
+    is_poisson=ifelse(is_negative_binomial==1, 0, 1),
+    is_gamma_reporting_delay=is_gamma_delay,
+    prior_R_choice=ifelse(is_gamma_Rt_prior==1, 2, 1),
+    prior_R_a=prior_Rt$location,
+    prior_R_b=prior_Rt$scale,
+    prior_kappa_a=prior_kappa_a,
+    prior_kappa_b=prior_kappa_b,
+    prior_theta_1_a=priors_reporting$mean_mu,
+    prior_theta_1_b=priors_reporting$mean_sigma,
+    prior_theta_2_a=priors_reporting$sd_mu,
+    prior_theta_2_b=priors_reporting$sd_sigma
+  )
+
+  fit <- rstan::sampling(
+    model,
+    data=data_stan,
+    iter=n_iterations,
+    chains=1,
+    init=init_fn,
+    refresh=0,
+    verbose=FALSE,
+    show_messages=FALSE,
+    control=list(stepsize=0.001, int_time=20),
+    sample_file="test.txt"
+    )
+
+  new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial)
+
+  new_parameter_values
+}
+
+
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
 #' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
@@ -778,11 +942,9 @@ mcmc_single <- function(
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
-  reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
-  initial_overdispersion=5,
   is_negative_binomial=FALSE,
-  overdispersion_metropolis_sd=0.5) {
+  n_stan_iterations_per_step=1) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -868,115 +1030,22 @@ mcmc_single <- function(
       kappa=overdispersion_current,
       is_negative_binomial=is_negative_binomial)
 
+    # use Stan to sample everything else
 
-    # sample Rt
-    cases_history_df <- df_running %>%
-      dplyr::select(time_onset, Rt_index) %>%
-      dplyr::left_join(df_temp, by = "time_onset", relationship = "many-to-many") %>%
-      dplyr::select(-c("cases_reported", "time_reported")) %>%
-      dplyr::rename(cases_true=cases_estimated) %>%
-      unique()
+    ## TODO combine df_temp with Rt
 
-    df_Rt <- sample_Rt(cases_history_df,
-                       priors$Rt,
-                       serial_parameters,
-                       serial_max,
-                       ndraws=1,
-                       maximise=maximise,
-                       is_negative_binomial=is_negative_binomial)
-    # nocov start
-    if(nrow(df_Rt) != num_Rts)
-      stop("Number of Rts outputted not equal to initial Rt dims.")
-    # nocov end
-    # store Rts
-    for(j in 1:num_Rts) {
-      Rt_index <- df_Rt$Rt_index[j]
-      Rt_temp <- df_Rt$Rt[j]
-      Rt_samples[k, ] <- c(i, Rt_index, Rt_temp)
-      k <- k + 1
-    }
+    new_parameter_vals <- sample_stan_Rt_reporting_overdispersion(
+      df=df_cases_rt_reporting,
+      priors=priors,
+      is_negative_binomial=is_negative_binomial,
+      is_rw_prior=is_rw_prior,
+      serial_parameters=serial_parameters,
+      serial_max=serial_max,
+      is_gamma_delay=is_gamma_delay,
+      n_iterations=n_stan_iterations_per_step)
 
-    # sample reporting parameters
-    df_temp <- df_temp %>%
-      dplyr::rename(cases_true=cases_estimated)
-    if(i == 1) {
-      logp_current_reporting <- observation_process_all_times_logp(
-        snapshot_with_true_cases_df=df_temp,
-        reporting_parameters=reporting_current
-      ) + prior_reporting_parameters(reporting_current,
-                                     priors$reporting)
-    }
-    list_reporting_logp <- sample_reporting(
-      snapshot_with_true_cases_df=df_temp,
-      current_reporting_parameters=reporting_current,
-      logp_current=logp_current_reporting,
-      prior_parameters=priors$reporting,
-      metropolis_parameters=reporting_metropolis_parameters,
-      maximise=maximise,
-      ndraws=1)
-    reporting_temp <- list_reporting_logp$reporting_parameters
-    logp_current_reporting <- list_reporting_logp$logp
-    reporting_temp$draw_index <- NULL
-    reporting_current <- reporting_temp
-    reporting_current$iteration <- i
-    if(i == 1)
-      reporting_samples <- reporting_current
-    else
-      reporting_samples <- reporting_samples %>% dplyr::bind_rows(reporting_current)
+    ## TODO store various things
 
-    # update main df used in sampling
-    df_running <- df_temp %>%
-      dplyr::select(-cases_true) %>%
-      dplyr::left_join(cases_history_df, by = c("time_onset", "reporting_piece_index")) %>%
-      dplyr::left_join(df_Rt, by = "Rt_index") %>%
-      dplyr::select(-draw_index)
-
-    if(is_negative_binomial) {
-      df_nb_tmp <- df_running %>%
-        dplyr::select(time_onset, cases_true, Rt) %>%
-        unique()
-
-      if(i == 1) {
-        logp_prior <- dgamma_mean_sd(overdispersion_current,
-                                     priors$overdispersion$mean,
-                                     priors$overdispersion$sd)
-        logp_overdispersion <- state_process_nb_logp_all_onsets(
-          overdispersion_current, df_nb_tmp, serial_parameters
-        ) + logp_prior
-      }
-
-      list_parameter_logp <- metropolis_step_overdispersion(
-        overdispersion_current,
-        logp_overdispersion,
-        df_nb_tmp,
-        serial_parameters,
-        priors$overdispersion,
-        overdispersion_metropolis_sd
-      )
-      overdispersion_current <- list_parameter_logp$overdispersion
-      logp_overdispersion <- list_parameter_logp$logp
-
-      overdipersion_tmp <- dplyr::tibble(
-        overdispersion=overdispersion_current,
-        iteration=i)
-
-      if(i == 1)
-        overdispersion_samples <- overdipersion_tmp
-      else
-        overdispersion_samples <- overdispersion_samples %>%
-          dplyr::bind_rows(overdipersion_tmp)
-    }
-
-    # store cases
-    cases_history_df <- cases_history_df %>%
-      dplyr::select(-Rt_index) %>%
-      dplyr::mutate(iteration=i)
-    if(i == 1) {
-      cases_history_samples <- cases_history_df
-    } else {
-      cases_history_samples <- cases_history_samples %>%
-        dplyr::bind_rows(cases_history_df)
-    }
 
     if(print_to_screen) {
       end[i] <- Sys.time()
