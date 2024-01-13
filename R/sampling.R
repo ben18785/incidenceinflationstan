@@ -733,62 +733,46 @@ sample_reporting <- function(
 
 extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
 
-  Rt <- rstan::extract(fit, "R")[[1]]
-  n_iterations <- nrow(Rt)
-  Rt <- Rt[n_iterations, ]
+  Rs <- fit$draws("R", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw))
+  Rs <- Rs[nrow(Rs), ] %>%
+    unlist() %>%
+    unname()
 
   df_Rt <- dplyr::tibble(
-    Rt_index=seq_along(Rt),
-    Rt=Rt
+    Rt=Rs,
+    Rt_index=seq_along(Rt)
   )
 
-  reporting_params <- rstan::extract(fit, "theta")[[1]]
-  n_thetas <- dim(reporting_params)[2]
-  reporting_params <- reporting_params[n_iterations, , ]
-
-  if(n_thetas > 1) {
-    df_reporting <- dplyr::tibble(
-      location=reporting_params[, 1],
-      scale=reporting_params[, 2]
-    ) %>%
-      dplyr::mutate(reporting_index=seq_along(location))
-  } else {
-    df_reporting <- dplyr::tibble(
-      location=reporting_params[1],
-      scale=reporting_params[2]
-    ) %>%
-      dplyr::mutate(reporting_index=seq_along(location))
-  }
+  theta <- fit$draws("theta", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw))
+  theta <- theta[nrow(theta), ] %>%
+    unlist() %>%
+    unname()
+  df_reporting <- dplyr::tibble(
+    location=theta[1],
+    scale=theta[2]
+  )
 
   df_tmp <- list(Rt=df_Rt,
-       reporting=df_reporting)
-
+                 reporting=df_reporting)
   if(is_negative_binomial) {
-    kappa <- rstan::extract(fit, "kappa")[[1]]
-    kappa <- kappa[n_iterations]
+
+    kappa <- fit$draws("kappa", format="df") %>%
+      as.data.frame() %>%
+      dplyr::select(-c(.iteration, .chain, .draw))
+    kappa <- kappa[nrow(kappa), ] %>%
+      unlist() %>%
+      unname()
     df_tmp$overdispersion <- kappa
   }
 
   df_tmp
 }
 
-
-#' Sample Rt, reporting parameters and the overdispersion parameter (if a negative
-#' binomial model is chosen) using Stan
-#'
-#' @param df a tibble with columns: time_onset, time_reported, cases_reported, cases_true,
-#' reporting_piece_index, Rt_index
-#' @param current_parameter_values a named list with three elements: 'Rt', 'reporting' and 'overdispersion'
-#' @inheritParams mcmc
-#' @param is_rw_prior if true, specify a random walk prior on the Rt values rather
-#' than a gamma prior
-#' @param n_iterations number of MCMC iterations for Stan
-#'
-#' @return a named list with elements: 'Rt', 'reporting' and 'overdispersion'
-#' @export
-#'
-#' @examples
-sample_stan_Rt_reporting_overdispersion <- function(
+prepare_stan_data_and_init <- function(
     df,
     current_parameter_values,
     priors,
@@ -796,9 +780,8 @@ sample_stan_Rt_reporting_overdispersion <- function(
     is_rw_prior,
     serial_parameters,
     serial_max,
-    n_iterations=1,
-    is_gamma_delay=1,
-    is_first_run=FALSE) {
+    n_iterations,
+    is_gamma_delay) {
 
   df_short <- df %>%
     dplyr::select(time_onset, Rt_index, cases_true) %>%
@@ -876,18 +859,154 @@ sample_stan_Rt_reporting_overdispersion <- function(
     prior_theta_2_b=priors_reporting$sd_sigma
   )
 
-  fit <- rstan::sampling(
-    model,
+  list(data=data_stan, init=init_fn)
+}
+
+stan_initialisation <- function(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay,
+    stan_model,
+    warmup_steps=20) {
+
+
+  tmp <- prepare_stan_data_and_init(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    n_iterations,
+    is_gamma_delay)
+  data_stan <- tmp$data
+  init <- tmp$init
+
+  # perform optimisation to get reasonable initial parameter values
+  unconverged <- TRUE
+  tries <- 1
+  max_tries <- 100
+  while(unconverged & tries < max_tries) {
+    print(i)
+    tries <- tries + 1
+    temp <- stan_model$optimize(data=data_stan)
+    unconverged <- if_else(temp$return_codes() != 0, TRUE, FALSE)
+  }
+
+  # perform warmup for NUTS to get reasonable step sizes
+  Rs <- temp$draws("R", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw)) %>%
+    unlist() %>%
+    unname()
+  theta <- temp$draws("theta", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw)) %>%
+    unlist() %>%
+    unname()
+
+  if(is_negative_binomial) {
+
+    kappa <- temp$draws("kappa", format="df") %>%
+      as.data.frame() %>%
+      dplyr::select(-c(.iteration, .chain, .draw)) %>%
+      unlist() %>%
+      unname()
+
+    init_fn <- function() {
+      list(
+        R=Rs,
+        theta=matrix(theta, ncol = 2),
+        kappa=kappa
+      )
+    }
+
+  } else {
+
+    init_fn <- function() {
+      list(
+        R=Rs,
+        theta=matrix(theta, ncol = 2)
+      )
+    }
+
+  }
+
+  test <- stan_model$sample(
     data=data_stan,
-    iter=n_iterations,
-    chains=1,
-    init=init_fn,
-    refresh=0,
-    verbose=FALSE,
-    show_messages=FALSE,
-    control=list(stepsize=0.001, int_time=20),
-    sample_file="test.txt"
-    )
+    init = init_fn,
+    iter_warmup = warmup_steps,
+    iter_sampling = 0,
+    adapt_delta=0.9,
+    refresh = 0,
+    show_messages = FALSE,
+    show_exceptions = FALSE,
+    chains=1)
+
+  list(step_size = test$metadata()$step_size_adaptation,
+       init = init_fn)
+}
+
+
+#' Sample Rt, reporting parameters and the overdispersion parameter (if a negative
+#' binomial model is chosen) using Stan
+#'
+#' @param df a tibble with columns: time_onset, time_reported, cases_reported, cases_true,
+#' reporting_piece_index, Rt_index
+#' @param current_parameter_values a named list with three elements: 'Rt', 'reporting' and 'overdispersion'
+#' @inheritParams mcmc
+#' @param is_rw_prior if true, specify a random walk prior on the Rt values rather
+#' than a gamma prior
+#' @param n_iterations number of MCMC iterations for Stan
+#'
+#' @return a named list with elements: 'Rt', 'reporting' and 'overdispersion'
+#' @export
+#'
+#' @examples
+sample_stan_Rt_reporting_overdispersion <- function(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay,
+    stan_model,
+    step_size,
+    init_fn,
+    n_nuts_per_step) {
+
+
+  tmp <- prepare_stan_data_and_init(
+            df,
+            current_parameter_values,
+            priors,
+            is_negative_binomial,
+            is_rw_prior,
+            serial_parameters,
+            serial_max,
+            n_iterations,
+            is_gamma_delay)
+  data_stan <- tmp$data
+
+  fit <- stan_model$sample(
+    data=data_stan,
+    init = init_fn,
+    adapt_engaged = FALSE,
+    iter_warmup = 0,
+    iter_sampling = n_nuts_per_step,
+    step_size = step_size,
+    refresh = 0,
+    show_messages = FALSE,
+    show_exceptions = FALSE,
+    chains=1)
 
   new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial)
 
@@ -942,6 +1061,7 @@ mcmc_single <- function(
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
+  initial_overdispersion=5,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
   n_stan_iterations_per_step=1) {
@@ -1028,21 +1148,63 @@ mcmc_single <- function(
       p_gamma_cutoff=p_gamma_cutoff,
       maximise=maximise,
       kappa=overdispersion_current,
-      is_negative_binomial=is_negative_binomial)
+      is_negative_binomial=is_negative_binomial) %>%
+      rename(cases_true=cases_estimated)
 
-    # use Stan to sample everything else
+    df_Rt_index <- df_running %>%
+      dplyr::select(time_onset, Rt_index) %>%
+      unique()
+
+    df_temp <- df_temp %>%
+      dplyr::left_join(df_Rt_index, by="time_onset")
+
+    current_Rt <- df_running %>%
+      dplyr::select(Rt_index, Rt) %>%
+      unique()
+    reporting_current$location <- reporting_current$mean
+    reporting_current$scale <- reporting_current$sd
+    current_values <- list(Rt=current_Rt,
+                           reporting=reporting_current,
+                           overdispersion=overdispersion_current)
+
+    # first iteration, compile Stan file using cmdstan and get reasonable step
+    # sizes for sampling
+    if(i == 1) {
+
+      stan_model <- cmdstanr::cmdstan_model("inst/stan/conditional_renewal.stan")
+
+      step_size_inits <- stan_initialisation(
+        df_temp,
+        current_values,
+        priors,
+        is_negative_binomial,
+        is_rw_prior,
+        serial_parameters,
+        serial_max,
+        is_gamma_delay,
+        stan_model,
+        warmup_steps)
+
+      step_size <- step_size_inits$step_size
+      init_fn <- step_size_inits$init
+    }
+
+    Rt_reporting_overdispersion_draws <-
+      sample_stan_Rt_reporting_overdispersion(
+        df_temp,
+        current_parameter_values,
+        priors,
+        is_negative_binomial,
+        is_rw_prior,
+        serial_parameters,
+        serial_max,
+        is_gamma_delay,
+        stan_model,
+        step_size=0.001,
+        init_fn,
+        n_nuts_per_step)
 
     ## TODO combine df_temp with Rt
-
-    new_parameter_vals <- sample_stan_Rt_reporting_overdispersion(
-      df=df_cases_rt_reporting,
-      priors=priors,
-      is_negative_binomial=is_negative_binomial,
-      is_rw_prior=is_rw_prior,
-      serial_parameters=serial_parameters,
-      serial_max=serial_max,
-      is_gamma_delay=is_gamma_delay,
-      n_iterations=n_stan_iterations_per_step)
 
     ## TODO store various things
 
