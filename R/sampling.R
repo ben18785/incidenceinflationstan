@@ -1204,10 +1204,12 @@ mcmc_single <- function(
         init_fn,
         n_nuts_per_step)
 
-    ## TODO combine df_temp with Rt
+    df_Rt <- Rt_reporting_overdispersion_draws$Rt
+    df_running <- df_temp %>%
+      dplyr::left_join(df_Rt, by="Rt_index")
 
     ## TODO store various things
-
+    Rt_samples[i, ] <-
 
     if(print_to_screen) {
       end[i] <- Sys.time()
