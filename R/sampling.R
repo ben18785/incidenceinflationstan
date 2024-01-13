@@ -1209,7 +1209,17 @@ mcmc_single <- function(
       dplyr::left_join(df_Rt, by="Rt_index")
 
     ## TODO store various things
-    Rt_samples[i, ] <-
+    # nocov start
+    if(nrow(df_Rt) != num_Rts)
+      stop("Number of Rts outputted not equal to initial Rt dims.")
+    # nocov end
+    # store Rts
+    for(j in 1:num_Rts) {
+      Rt_index <- df_Rt$Rt_index[j]
+      Rt_temp <- df_Rt$Rt[j]
+      Rt_samples[k, ] <- c(i, Rt_index, Rt_temp)
+      k <- k + 1
+    }
 
     if(print_to_screen) {
       end[i] <- Sys.time()
