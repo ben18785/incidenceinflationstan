@@ -885,63 +885,14 @@ stan_initialisation <- function(
     serial_max,
     n_iterations,
     is_gamma_delay)
+
   data_stan <- tmp$data
-  init <- tmp$init
+  init_fn <- tmp$init
 
-  # perform optimisation to get reasonable initial parameter values
-  unconverged <- TRUE
-  tries <- 1
-  max_tries <- 100
-  while(unconverged & tries < max_tries) {
-    print(i)
-    tries <- tries + 1
-    temp <- stan_model$optimize(data=data_stan)
-    unconverged <- if_else(temp$return_codes() != 0, TRUE, FALSE)
-  }
-
-  # perform warmup for NUTS to get reasonable step sizes
-  Rs <- temp$draws("R", format="df") %>%
-    as.data.frame() %>%
-    dplyr::select(-c(.iteration, .chain, .draw)) %>%
-    unlist() %>%
-    unname()
-  theta <- temp$draws("theta", format="df") %>%
-    as.data.frame() %>%
-    dplyr::select(-c(.iteration, .chain, .draw)) %>%
-    unlist() %>%
-    unname()
-
-  if(is_negative_binomial) {
-
-    kappa <- temp$draws("kappa", format="df") %>%
-      as.data.frame() %>%
-      dplyr::select(-c(.iteration, .chain, .draw)) %>%
-      unlist() %>%
-      unname()
-
-    init_fn <- function() {
-      list(
-        R=Rs,
-        theta=matrix(theta, ncol = 2),
-        kappa=kappa
-      )
-    }
-
-  } else {
-
-    init_fn <- function() {
-      list(
-        R=Rs,
-        theta=matrix(theta, ncol = 2)
-      )
-    }
-
-  }
-
-  test <- stan_model$sample(
+  model <- stan_model$sample(
     data=data_stan,
     init = init_fn,
-    iter_warmup = warmup_steps,
+    iter_warmup = 1,
     iter_sampling = 0,
     adapt_delta=0.9,
     refresh = 0,
@@ -949,8 +900,7 @@ stan_initialisation <- function(
     show_exceptions = FALSE,
     chains=1)
 
-  list(step_size = test$metadata()$step_size_adaptation,
-       init = init_fn)
+  model
 }
 
 
@@ -1177,47 +1127,15 @@ mcmc_single <- function(
     # sizes for sampling
     if(i == 1) {
 
-      stan_model <- cmdstanr::cmdstan_model("inst/stan/conditional_renewal.stan")
+      stan_model <- cmdstanr::cmdstan_model(
+        "inst/stan/conditional_renewal.stan",
+        compile_model_methods=TRUE,
+        force_recompile=TRUE)
 
-      # step_size_inits <- stan_initialisation(
-      #   df_temp %>%
-      #     rename(cases_true=cases_estimated),
-      #   current_values,
-      #   priors,
-      #   is_negative_binomial,
-      #   is_rw_prior,
-      #   serial_parameters,
-      #   serial_max,
-      #   is_gamma_delay,
-      #   stan_model,
-      #   warmup_steps)
-      #
-      # step_size <- step_size_inits$step_size
-      # init_fn <- step_size_inits$init
-    }
-
-    if(is_negative_binomial) {
-      init_fn <- function() {
-        list(
-          R=current_values$Rt$Rt,
-          theta=matrix(reporting_current[, 4:5], ncol = 2),
-          kappa=overdispersion_current
-        )
-      }
-    } else {
-      init_fn <- function() {
-        list(
-          R=current_values$Rt$Rt,
-          theta=matrix(reporting_current[, 4:5], ncol = 2)
-        )
-      }
-    }
-
-    Rt_reporting_overdispersion_draws <-
-      sample_stan_Rt_reporting_overdispersion(
+      model <- stan_initialisation(
         df_temp %>%
           rename(cases_true=cases_estimated),
-        current_parameter_values,
+        current_values,
         priors,
         is_negative_binomial,
         is_rw_prior,
@@ -1225,15 +1143,39 @@ mcmc_single <- function(
         serial_max,
         is_gamma_delay,
         stan_model,
-        step_size=0.001,
-        init_fn,
-        n_nuts_per_step)
+        warmup_steps)
 
-    df_Rt <- Rt_reporting_overdispersion_draws$Rt
+      current <- list(R=current_values_R$Rt,
+                      theta=matrix(unlist(reporting_current[, 4:5]), ncol=2, nrow=1),
+                      kappa=overdispersion_current)
+      vars <- model$unconstrain_variables(current)
+      log_p_current <- test$log_prob(vars)
+    }
+
+    # TODO: make this an optional argument to function and adapt covariance matrix
+    # as in adaptive covariance.
+    # TODO: replace rnorm with rnorm_trunc (and update Metropolis-Hastings)
+    sigma <- list(sigma_R=0.1, sigma_theta_mean=0.5, sigma_theta_sd=0.5,
+                  sigma_kappa=0.1)
+    Rs_proposed <- rnorm(5, current$R, rep(sigma$sigma_R, 5))
+    theta_mu_proposed <- rnorm(length(current$theta[, 1]), current$theta[, 1], sigma$sigma_theta_mean)
+    theta_sigma_proposed <- rnorm(length(current$theta[, 2]), current$theta[, 2], sigma$sigma_theta_sd)
+    kappa_proposed <- rnorm(1, current$kappa, sigma$sigma_kappa)
+    proposed <- list(R=Rs_proposed,
+                     theta=matrix(c(theta_mu_proposed, theta_sigma_proposed), ncol=2),
+                     kappa=kappa_proposed)
+    vars <- model$unconstrain_variables(proposed)
+    log_p_proposed <- model$log_prob(vars)
+
+    log_r <- log_p_proposed - log_p_current
+    log_u <- log(runif(1))
+    if(log_r > log_u)
+      current <- proposed
+
+    df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
       dplyr::left_join(df_Rt, by="Rt_index")
 
-    ## TODO store various things
     # nocov start
     if(nrow(df_Rt) != num_Rts)
       stop("Number of Rts outputted not equal to initial Rt dims.")
@@ -1248,7 +1190,7 @@ mcmc_single <- function(
 
     if(is_negative_binomial) {
       overdipersion_tmp <- dplyr::tibble(
-        overdispersion=Rt_reporting_overdispersion_draws$overdispersion,
+        overdispersion=current$kappa,
         iteration=i)
 
       if(i == 1)
