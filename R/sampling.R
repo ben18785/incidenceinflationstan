@@ -871,8 +871,7 @@ stan_initialisation <- function(
     serial_parameters,
     serial_max,
     is_gamma_delay,
-    stan_model,
-    warmup_steps=20) {
+    stan_model) {
 
 
   tmp <- prepare_stan_data_and_init(
@@ -964,6 +963,68 @@ sample_stan_Rt_reporting_overdispersion <- function(
 }
 
 
+
+metropolis_step_Rt_reporting_overdispersion <- function(current, sigma,
+                                                        mu, sigma, log_lambda, eta, iteration) {
+
+  gamma <- iteration^(-eta)
+
+  vars <- model$unconstrain_variables(current)
+
+  # TODO: update methods so that we use adaptive covariance in proposals
+  unconstrained_proposed <- rmvnorm(1, vars, sigma)
+
+  # TODO: needs accept/reject here so that I can update things
+  accepted <- 1 # should be based on actually what happens
+  mu <- (1 - gamma) * mu + gamma * updated_unconstrained_params
+  sigma <- (1 - gamma) * sigma + gamma * (updated_unconstrained_params - mu) (updated_unconstrained_params - mu) # probably matrix mult
+  log_lambda <- log_lambda + gamma * (alpha - 0.234)
+
+  n_R <- length(current$R)
+  n_theta <- length(current$theta[, 1] * 2)
+  n_kappa <- if_else(!is.null(current$kappa), 1, 0)
+  n_sigma <- if_else(!is.null(current$sigma), 1, 0)
+
+  # note: these are sensitive to changes in order of parameters in the Stan file
+  # TODO: put these in a separate function that gets unit tested!
+  indices_R <- 1:n_R
+  start_theta <- n_R + 1
+  indices_theta <- start_theta:(start_theta + n_theta - 1)
+  if(n_kappa > 0) {
+
+    start_kappa <- start_theta + n_theta
+    indices_kappa <- start_kappa:start_kappa
+
+    if(n_sigma > 0) {
+      indices_sigma <- (start_kappa + 1):(start_kappa + 1)
+    } else {
+      indices_sigma <- NULL
+    }
+  } else {
+
+    indices_kappa <- NULL
+
+    if(n_sigma > 0) {
+      start_sigma <- start_theta + n_theta
+      indices_sigma <- start_sigma:start_kappa
+    } else {
+      indices_sigma <- NULL
+    }
+  }
+
+  Rs_proposed <- unconstrained_proposed[indices_R]
+  theta_proposed <- matrix(unconstrained_proposed[indices_theta], ncol=2)
+  kappa_proposed <- unconstrained_proposed[indices_kappa]
+  sigma_proposed <- unconstrained_proposed[indices_sigma]
+
+  proposed <- list(R=Rs_proposed,
+                   theta=theta_proposed,
+                   kappa=kappa_proposed,
+                   sigma=sigma_proposed)
+  proposed
+}
+
+
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
 #' @param niterations number of MCMC iterations to run or number of iterative maximisations to run
@@ -1011,10 +1072,12 @@ mcmc_single <- function(
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
+  stan_model,
   initial_overdispersion=5,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
-  n_stan_iterations_per_step=1) {
+  metropolis_step_sizes=list(sigma_R=0.1, sigma_theta_mean=0.5, sigma_theta_sd=0.5,
+       sigma_kappa=0.1)) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -1123,14 +1186,8 @@ mcmc_single <- function(
                            reporting=reporting_current,
                            overdispersion=overdispersion_current)
 
-    # first iteration, compile Stan file using cmdstan and get reasonable step
-    # sizes for sampling
+    # just runs model for one iteration to give access to log_p
     if(i == 1) {
-
-      stan_model <- cmdstanr::cmdstan_model(
-        "inst/stan/conditional_renewal.stan",
-        compile_model_methods=TRUE,
-        force_recompile=TRUE)
 
       model <- stan_initialisation(
         df_temp %>%
@@ -1142,28 +1199,26 @@ mcmc_single <- function(
         serial_parameters,
         serial_max,
         is_gamma_delay,
-        stan_model,
-        warmup_steps)
+        stan_model)
 
-      current <- list(R=current_values_R$Rt,
+      current <- list(R=current_values$Rt$Rt,
                       theta=matrix(unlist(reporting_current[, 4:5]), ncol=2, nrow=1),
                       kappa=overdispersion_current)
       vars <- model$unconstrain_variables(current)
-      log_p_current <- test$log_prob(vars)
+      log_p_current <- model$log_prob(vars)
+
+      # adaptive covariance parameters
+      mu <- vars
+      sigma <- diag(1, nrow = length(vars), ncol = length(vars))
+      log_lambda <- 0
+
     }
 
-    # TODO: make this an optional argument to function and adapt covariance matrix
-    # as in adaptive covariance.
-    # TODO: replace rnorm with rnorm_trunc (and update Metropolis-Hastings)
-    sigma <- list(sigma_R=0.1, sigma_theta_mean=0.5, sigma_theta_sd=0.5,
-                  sigma_kappa=0.1)
-    Rs_proposed <- rnorm(5, current$R, rep(sigma$sigma_R, 5))
-    theta_mu_proposed <- rnorm(length(current$theta[, 1]), current$theta[, 1], sigma$sigma_theta_mean)
-    theta_sigma_proposed <- rnorm(length(current$theta[, 2]), current$theta[, 2], sigma$sigma_theta_sd)
-    kappa_proposed <- rnorm(1, current$kappa, sigma$sigma_kappa)
-    proposed <- list(R=Rs_proposed,
-                     theta=matrix(c(theta_mu_proposed, theta_sigma_proposed), ncol=2),
-                     kappa=kappa_proposed)
+    # TODO: adapt covariance matrix as in adaptive covariance.
+    res <- metropolis_step_Rt_reporting_overdispersion(
+      current, metropolis_step_sizes,
+      mu, sigma, log_lambda)
+    proposed <- res$proposed
     vars <- model$unconstrain_variables(proposed)
     log_p_proposed <- model$log_prob(vars)
 
@@ -1175,6 +1230,18 @@ mcmc_single <- function(
     df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
       dplyr::left_join(df_Rt, by="Rt_index")
+
+    reporting_tmp <- dplyr::tibble(
+      location=current$theta[, 1],
+      scale=current$theta[, 2],
+      reporting_piece_index=seq_along(location),
+      iteration=i
+    )
+
+    if(i == 1)
+      reporting_samples <- reporting_tmp
+    else
+      reporting_samples <- reporting_samples %>% bind_rows(reporting_tmp)
 
     # nocov start
     if(nrow(df_Rt) != num_Rts)
@@ -1234,7 +1301,7 @@ mcmc_single <- function(
     dplyr::select(-reporting_piece_index)
 
   reporting_samples <- reporting_samples %>%
-    dplyr::relocate("reporting_piece_index", "mean", "sd", "iteration")
+    dplyr::relocate("reporting_piece_index", "location", "scale", "iteration")
 
   list_results <-list(
     cases=cases_samples,

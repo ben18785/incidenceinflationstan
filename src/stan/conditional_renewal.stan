@@ -14,10 +14,11 @@ functions {
     real loc = theta[1];
     real scale = theta[2];
 
+
+
     if (is_gamma_reporting_delay == 1) {
       S_t_prime = 1 - gamma_cdf_mean_variance(t_prime - t, loc, scale);
-      S_t_double_prime = 1
-                         - gamma_cdf_mean_variance(t_double_prime - t, loc,
+      S_t_double_prime = 1 - gamma_cdf_mean_variance(t_double_prime - t, loc,
                                                    scale);
     } else if (is_gamma_reporting_delay == 0) {
       S_t_prime = 1 - lognormal_cdf(t_prime - t | loc, scale);
@@ -63,9 +64,9 @@ transformed data {
 }
 parameters {
   array[K] real<lower=0> R;
-  array[is_random_walk ? 1 : 0] real<lower=0> sigma;
-  array[is_poisson ? 0 : 1] real<lower=0> kappa;
   matrix<lower=0>[n_reporting_window, 2] theta;
+  array[is_poisson ? 0 : 1] real<lower=0> kappa;
+  array[is_random_walk ? 1 : 0] real<lower=0> sigma;
 }
 transformed parameters {
   array[N - 1] real E_cases;
