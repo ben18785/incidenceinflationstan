@@ -14,12 +14,9 @@ functions {
     real loc = theta[1];
     real scale = theta[2];
 
-
-
     if (is_gamma_reporting_delay == 1) {
-      S_t_prime = 1 - gamma_cdf_mean_variance(t_prime - t, loc, scale);
-      S_t_double_prime = 1 - gamma_cdf_mean_variance(t_double_prime - t, loc,
-                                                   scale);
+      S_t_prime = 1 - gamma_cdf_mean_variance(t_prime - t, loc, scale) + 1e-10; // add a bit to avoid roundoff
+      S_t_double_prime = 1 - gamma_cdf_mean_variance(t_double_prime - t, loc, scale);
     } else if (is_gamma_reporting_delay == 0) {
       S_t_prime = 1 - lognormal_cdf(t_prime - t | loc, scale);
       S_t_double_prime = 1 - lognormal_cdf(t_double_prime - t | loc, scale);

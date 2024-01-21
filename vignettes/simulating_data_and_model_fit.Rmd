@@ -220,7 +220,7 @@ priors <- list(Rt=Rt_prior,
                max_cases=5000)
 
 
-stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_2.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
 test <- mcmc_single(
@@ -235,10 +235,15 @@ test <- mcmc_single(
   initial_metropolis_parameters=0.1
 )
 b <- test$Rt
+theta <- test$reporting
 b %>% 
   ggplot(aes(x=iteration, y=Rt)) +
   geom_line() +
   facet_wrap(~Rt_index)
+theta %>% 
+  ggplot(aes(x=iteration, y=location)) +
+  geom_line()
+
 
   
 

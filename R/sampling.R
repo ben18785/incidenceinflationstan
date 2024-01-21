@@ -983,6 +983,7 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, 
     current <- proposed
     unconstrained_current <- unconstrained_proposed
     alpha <- 1
+    log_p_current <- log_p_proposed
   } else {
     alpha <- 0
   }
@@ -996,6 +997,7 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, 
   log_lambda <- log_lambda + gamma * (alpha - 0.234)
 
   list(current=current,
+       log_p_current=log_p_current,
        mu=mu,
        sigma=sigma,
        log_lambda=log_lambda)
@@ -1199,6 +1201,7 @@ mcmc_single <- function(
       current, log_p_current, model,
       mu, sigma, log_lambda,
       eta, i)
+    log_p_current <- res$log_p_current
     current <- res$current
     mu <- res$mu
     sigma <- res$sigma
