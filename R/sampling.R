@@ -1054,7 +1054,7 @@ mcmc_single <- function(
   stan_model,
   initial_overdispersion=5,
   initial_sigma=5,
-  initial_metropolis_parameters=0.1,
+  initial_metropolis_parameters=1.0,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
   is_gamma_delay=TRUE) {
@@ -1173,7 +1173,7 @@ mcmc_single <- function(
 
       model <- stan_initialisation(
         df_temp %>%
-          rename(cases_true=cases_estimated),
+          dplyr::rename(cases_true=cases_estimated),
         current_values,
         priors,
         is_negative_binomial,
@@ -1373,12 +1373,15 @@ mcmc <- function(
     initial_cases_true,
     initial_reporting_parameters,
     initial_Rt,
-    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
-    nchains=1, is_parallel=FALSE,
+    stan_model,
+    nchains=1,
     initial_overdispersion=5,
+    initial_sigma=5,
+    initial_metropolis_parameters=1.0,
+    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
     is_negative_binomial=FALSE,
-    overdispersion_metropolis_sd=0.25) {
+    is_gamma_delay=TRUE,
+    is_parallel=FALSE) {
 
   if(nchains==1) {
     res <- mcmc_single(niterations,
@@ -1388,14 +1391,16 @@ mcmc <- function(
                        initial_cases_true,
                        initial_reporting_parameters,
                        initial_Rt,
-                       reporting_metropolis_parameters,
+                       stan_model,
+                       initial_overdispersion,
+                       initial_sigma,
+                       initial_metropolis_parameters,
                        serial_max,
                        p_gamma_cutoff,
                        maximise,
                        print_to_screen,
-                       initial_overdispersion,
                        is_negative_binomial,
-                       overdispersion_metropolis_sd)
+                       is_gamma_delay)
     res$cases$chain <- 1
     res$Rt$chain <- 1
     res$reporting$chain <- 1
@@ -1406,7 +1411,7 @@ mcmc <- function(
     list_of_results <- vector(mode = "list", length = nchains)
     if(is_parallel) {
 
-      if (requireNamespace("foreach", quietly = TRUE)) {
+      if (requireNamespace("foreach", quietly = TRUE, .packages = "Rcpp", .noexport = c(stan_model))) {
 
         f_run_single <- function() {
           mcmc_single(niterations,
@@ -1416,14 +1421,16 @@ mcmc <- function(
                       initial_cases_true,
                       initial_reporting_parameters,
                       initial_Rt,
-                      reporting_metropolis_parameters,
+                      stan_model,
+                      initial_overdispersion,
+                      initial_sigma,
+                      initial_metropolis_parameters,
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
                       print_to_screen,
-                      initial_overdispersion,
                       is_negative_binomial,
-                      overdispersion_metropolis_sd)
+                      is_gamma_delay)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -1447,14 +1454,16 @@ mcmc <- function(
                            initial_cases_true,
                            initial_reporting_parameters,
                            initial_Rt,
-                           reporting_metropolis_parameters,
+                           stan_model,
+                           initial_overdispersion,
+                           initial_sigma,
+                           initial_metropolis_parameters,
                            serial_max,
                            p_gamma_cutoff,
                            maximise,
                            print_to_screen,
-                           initial_overdispersion,
                            is_negative_binomial,
-                           overdispersion_metropolis_sd)
+                           is_gamma_delay)
         list_of_results[[i]] <- res
       }
     }

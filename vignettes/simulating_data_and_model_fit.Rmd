@@ -224,15 +224,14 @@ stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_2.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
 test <- mcmc_single(
-  100,
+  400,
   snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
-  stan_model,
-  initial_metropolis_parameters=0.1
+  stan_model
 )
 b <- test$Rt
 theta <- test$reporting
@@ -241,29 +240,35 @@ b %>%
   geom_line() +
   facet_wrap(~Rt_index)
 theta %>% 
-  ggplot(aes(x=iteration, y=location)) +
+  pivot_longer(-c(reporting_piece_index, iteration)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
   geom_line()
 
-
-  
 
 # running MCMC across 2 chains
 ## uncomment to run in parallel
 # library(doParallel)
 # cl <- makeCluster(2)
 # registerDoParallel(cl)
-res <- mcmc(niterations=200,
-            snapshot_with_Rt_index_df,
-            priors,
-            serial_parameters,
-            initial_cases_true,
-            initial_reporting_parameters,
-            initial_Rt,
-            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-            nchains = 2, is_parallel = FALSE)
+res <- mcmc(500,
+  snapshot_with_Rt_index_df,
+  priors,
+  serial_parameters,
+  initial_cases_true,
+  initial_reporting_parameters,
+  initial_Rt,
+  stan_model,
+  nchains = 2,
+  is_parallel = FALSE)
 ## uncomment if running in parallel
 # stopCluster(cl)
+
+b <- res$Rt
+theta <- res$reporting
+b %>% 
+  ggplot(aes(x=iteration, y=Rt, colour=as.factor(chain))) +
+  geom_line() +
+  facet_wrap(~Rt_index)
 ```
 
 Check convergence diagnostics
