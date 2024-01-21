@@ -162,7 +162,7 @@ cases_history_df <- cases_history_df %>%
   unique()
 
 # Prior on each Rt segment value
-Rt_prior <- list(shape=5, rate=5)
+Rt_prior <- list(location=2, scale=3)
 
 Rt_df_nb <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
@@ -203,7 +203,7 @@ initial_Rt <- tribble(~Rt_index, ~Rt,
                       4, 1.5,
                       5, 1.5)
 Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
-
+Rt_prior <- list(location=1.5, scale=2, is_gamma=TRUE)
 Rt_index_lookup <- tibble(
   time_onset=seq_along(Rt_indices),
   Rt_index=Rt_indices)
@@ -218,6 +218,21 @@ priors <- list(Rt=Rt_prior,
                               sd_mu=3,
                               sd_sigma=5),
                max_cases=5000)
+
+
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
+                                      compile_model_methods=TRUE,
+                                      force_recompile=TRUE)
+test <- mcmc_single(
+  10,
+  snapshot_with_Rt_index_df,
+  priors,
+  serial_parameters,
+  initial_cases_true,
+  initial_reporting_parameters,
+  initial_Rt,
+  stan_model
+)
 
 # running MCMC across 2 chains
 ## uncomment to run in parallel

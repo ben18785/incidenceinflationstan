@@ -774,7 +774,7 @@ extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
 
 prepare_stan_data_and_init <- function(
     df,
-    current_parameter_values,
+    current_values,
     priors,
     is_negative_binomial,
     is_rw_prior,
@@ -847,8 +847,8 @@ prepare_stan_data_and_init <- function(
 
     # options
     is_poisson=ifelse(is_negative_binomial==1, 0, 1),
-    is_gamma_reporting_delay=is_gamma_delay,
-    prior_R_choice=ifelse(is_gamma_Rt_prior==1, 2, 1),
+    is_gamma_reporting_delay=ifelse(is_gamma_delay, 1, 0),
+    prior_R_choice=ifelse(is_gamma_Rt_prior, 2, 1),
     prior_R_a=prior_Rt$location,
     prior_R_b=prior_Rt$scale,
     prior_kappa_a=prior_kappa_a,
@@ -898,7 +898,7 @@ stan_initialisation <- function(
     show_messages = FALSE,
     show_exceptions = FALSE,
     chains=1)
-
+  model$init_model_methods()
   model
 }
 
@@ -964,21 +964,11 @@ sample_stan_Rt_reporting_overdispersion <- function(
 
 
 
-metropolis_step_Rt_reporting_overdispersion <- function(current, sigma,
-                                                        mu, sigma, log_lambda, eta, iteration) {
-
-  gamma <- iteration^(-eta)
+metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigma, log_lambda, eta, iteration) {
 
   vars <- model$unconstrain_variables(current)
-
-  # TODO: update methods so that we use adaptive covariance in proposals
-  unconstrained_proposed <- rmvnorm(1, vars, sigma)
-
-  # TODO: needs accept/reject here so that I can update things
-  accepted <- 1 # should be based on actually what happens
-  mu <- (1 - gamma) * mu + gamma * updated_unconstrained_params
-  sigma <- (1 - gamma) * sigma + gamma * (updated_unconstrained_params - mu) (updated_unconstrained_params - mu) # probably matrix mult
-  log_lambda <- log_lambda + gamma * (alpha - 0.234)
+  unconstrained_proposed <- mvtnorm::rmvnorm(1, vars, exp(log_lambda) * sigma)
+  constrained_proposed <- model$constrain_variables(unconstrained_proposed)
 
   n_R <- length(current$R)
   n_theta <- length(current$theta[, 1] * 2)
@@ -1012,16 +1002,36 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, sigma,
     }
   }
 
-  Rs_proposed <- unconstrained_proposed[indices_R]
-  theta_proposed <- matrix(unconstrained_proposed[indices_theta], ncol=2)
-  kappa_proposed <- unconstrained_proposed[indices_kappa]
-  sigma_proposed <- unconstrained_proposed[indices_sigma]
+  Rs_proposed <- constrained_proposed[indices_R]
+  theta_proposed <- matrix(constrained_proposed[indices_theta], ncol=2)
+  kappa_proposed <- constrained_proposed[indices_kappa]
+  sigma_proposed <- constrained_proposed[indices_sigma]
 
   proposed <- list(R=Rs_proposed,
                    theta=theta_proposed,
                    kappa=kappa_proposed,
                    sigma=sigma_proposed)
-  proposed
+
+  log_p_proposed <- model$log_prob(unconstrained_proposed)
+
+  log_r <- log_p_proposed - log_p_current
+  log_u <- log(runif(1))
+  if(log_r > log_u) {
+    current <- proposed
+    alpha <- 1
+  } else {
+    alpha <- 0
+  }
+
+  gamma <- iteration^(-eta)
+  mu <- (1 - gamma) * mu + gamma * updated_unconstrained_params
+  sigma <- (1 - gamma) * sigma + gamma * (updated_unconstrained_params - mu) %*% (updated_unconstrained_params - mu)
+  log_lambda <- log_lambda + gamma * (alpha - 0.234)
+
+  list(current=current,
+       mu=mu,
+       sigma=sigma,
+       log_lambda=log_lambda)
 }
 
 
@@ -1074,10 +1084,10 @@ mcmc_single <- function(
   initial_Rt,
   stan_model,
   initial_overdispersion=5,
+  initial_sigma=5,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
-  metropolis_step_sizes=list(sigma_R=0.1, sigma_theta_mean=0.5, sigma_theta_sd=0.5,
-       sigma_kappa=0.1)) {
+  is_gamma_delay=TRUE) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -1182,9 +1192,11 @@ mcmc_single <- function(
       unique()
     reporting_current$location <- reporting_current$mean
     reporting_current$scale <- reporting_current$sd
+
+    # TODO: include kappa and sigma parameters, optionally
     current_values <- list(Rt=current_Rt,
-                           reporting=reporting_current,
-                           overdispersion=overdispersion_current)
+                           reporting=reporting_current)
+
 
     # just runs model for one iteration to give access to log_p
     if(i == 1) {
@@ -1201,31 +1213,30 @@ mcmc_single <- function(
         is_gamma_delay,
         stan_model)
 
+      print("hiya")
+
+      # TODO: tidy up as I am defining current twice: once here, and current_values above
+      # also need to add kappa and sigma optionally
       current <- list(R=current_values$Rt$Rt,
-                      theta=matrix(unlist(reporting_current[, 4:5]), ncol=2, nrow=1),
-                      kappa=overdispersion_current)
+                      theta=matrix(unlist(reporting_current[, 4:5]), ncol=2, nrow=1))
       vars <- model$unconstrain_variables(current)
       log_p_current <- model$log_prob(vars)
 
       # adaptive covariance parameters
       mu <- vars
-      sigma <- diag(1, nrow = length(vars), ncol = length(vars))
+      sigma <- diag(0.5, nrow = length(vars), ncol = length(vars))
       log_lambda <- 0
-
+      eta <- 0.6 # standard value used in adaptive covariance
     }
 
-    # TODO: adapt covariance matrix as in adaptive covariance.
     res <- metropolis_step_Rt_reporting_overdispersion(
-      current, metropolis_step_sizes,
-      mu, sigma, log_lambda)
-    proposed <- res$proposed
-    vars <- model$unconstrain_variables(proposed)
-    log_p_proposed <- model$log_prob(vars)
-
-    log_r <- log_p_proposed - log_p_current
-    log_u <- log(runif(1))
-    if(log_r > log_u)
-      current <- proposed
+      current, model,
+      mu, sigma, log_lambda,
+      eta, i)
+    current <- res$current
+    mu <- res$mu
+    sigma <- res$sigma
+    log_lambda <- res$log_lambda
 
     df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
