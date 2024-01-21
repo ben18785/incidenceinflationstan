@@ -964,53 +964,16 @@ sample_stan_Rt_reporting_overdispersion <- function(
 
 
 
-metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigma, log_lambda, eta, iteration) {
+metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, model, mu, sigma, log_lambda, eta, iteration) {
 
-  vars <- model$unconstrain_variables(current)
-  unconstrained_proposed <- mvtnorm::rmvnorm(1, vars, exp(log_lambda) * sigma)
+  unconstrained_current <- model$unconstrain_variables(current)
+  unconstrained_proposed <- mvtnorm::rmvnorm(1, unconstrained_current, exp(log_lambda) * sigma)
   constrained_proposed <- model$constrain_variables(unconstrained_proposed)
 
-  n_R <- length(current$R)
-  n_theta <- length(current$theta[, 1] * 2)
-  n_kappa <- if_else(!is.null(current$kappa), 1, 0)
-  n_sigma <- if_else(!is.null(current$sigma), 1, 0)
-
-  # note: these are sensitive to changes in order of parameters in the Stan file
-  # TODO: put these in a separate function that gets unit tested!
-  indices_R <- 1:n_R
-  start_theta <- n_R + 1
-  indices_theta <- start_theta:(start_theta + n_theta - 1)
-  if(n_kappa > 0) {
-
-    start_kappa <- start_theta + n_theta
-    indices_kappa <- start_kappa:start_kappa
-
-    if(n_sigma > 0) {
-      indices_sigma <- (start_kappa + 1):(start_kappa + 1)
-    } else {
-      indices_sigma <- NULL
-    }
-  } else {
-
-    indices_kappa <- NULL
-
-    if(n_sigma > 0) {
-      start_sigma <- start_theta + n_theta
-      indices_sigma <- start_sigma:start_kappa
-    } else {
-      indices_sigma <- NULL
-    }
-  }
-
-  Rs_proposed <- constrained_proposed[indices_R]
-  theta_proposed <- matrix(constrained_proposed[indices_theta], ncol=2)
-  kappa_proposed <- constrained_proposed[indices_kappa]
-  sigma_proposed <- constrained_proposed[indices_sigma]
-
-  proposed <- list(R=Rs_proposed,
-                   theta=theta_proposed,
-                   kappa=kappa_proposed,
-                   sigma=sigma_proposed)
+  proposed <- list(R=constrained_proposed$R,
+                   theta=constrained_proposed$theta,
+                   kappa=constrained_proposed$kappa,
+                   sigma=constrained_proposed$sigma)
 
   log_p_proposed <- model$log_prob(unconstrained_proposed)
 
@@ -1018,14 +981,18 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigm
   log_u <- log(runif(1))
   if(log_r > log_u) {
     current <- proposed
+    unconstrained_current <- unconstrained_proposed
     alpha <- 1
   } else {
     alpha <- 0
   }
 
-  gamma <- iteration^(-eta)
-  mu <- (1 - gamma) * mu + gamma * updated_unconstrained_params
-  sigma <- (1 - gamma) * sigma + gamma * (updated_unconstrained_params - mu) %*% (updated_unconstrained_params - mu)
+  # adaptive covariance updates, from https://github.com/pints-team/pints/blob/main/pints/_mcmc/_haario_bardenet_ac.py
+  gamma <- (iteration + 1)^(-eta)
+  mu <- (1 - gamma) * mu + gamma * unconstrained_current
+  m1 <- matrix(unconstrained_current - mu, nrow=length(unconstrained_current))
+  m_extra <- gamma * m1 %*% t(m1)
+  sigma <- (1 - gamma) * sigma + m_extra
   log_lambda <- log_lambda + gamma * (alpha - 0.234)
 
   list(current=current,
@@ -1085,6 +1052,7 @@ mcmc_single <- function(
   stan_model,
   initial_overdispersion=5,
   initial_sigma=5,
+  initial_metropolis_parameters=0.1,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
   is_gamma_delay=TRUE) {
@@ -1213,8 +1181,6 @@ mcmc_single <- function(
         is_gamma_delay,
         stan_model)
 
-      print("hiya")
-
       # TODO: tidy up as I am defining current twice: once here, and current_values above
       # also need to add kappa and sigma optionally
       current <- list(R=current_values$Rt$Rt,
@@ -1224,13 +1190,13 @@ mcmc_single <- function(
 
       # adaptive covariance parameters
       mu <- vars
-      sigma <- diag(0.5, nrow = length(vars), ncol = length(vars))
+      sigma <- diag(initial_metropolis_parameters, nrow = length(vars), ncol = length(vars))
       log_lambda <- 0
       eta <- 0.6 # standard value used in adaptive covariance
     }
 
     res <- metropolis_step_Rt_reporting_overdispersion(
-      current, model,
+      current, log_p_current, model,
       mu, sigma, log_lambda,
       eta, i)
     current <- res$current
