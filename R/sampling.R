@@ -14,7 +14,7 @@
 sample_true_cases_single_onset <- function(
   observation_df, cases_history, max_cases,
   Rt, day_onset, serial_parameters, reporting_parameters,
-  ndraws=1, maximise=FALSE, kappa=NULL, is_negative_binomial=FALSE) {
+  ndraws=1, maximise=FALSE, is_gamma_delay=TRUE, kappa=NULL, is_negative_binomial=FALSE) {
 
   max_observed_cases <- max(observation_df$cases_reported)
   if(max_observed_cases > max_cases)
@@ -22,6 +22,7 @@ sample_true_cases_single_onset <- function(
   possible_cases <- max_observed_cases:max_cases
   logps <- conditional_cases_logp(possible_cases, observation_df, cases_history,
                                   Rt, day_onset, serial_parameters, reporting_parameters,
+                                  is_gamma_delay,
                                   kappa, is_negative_binomial)
   probs <- exp(logps - matrixStats::logSumExp(logps))
   if(dplyr::last(probs) > 0.01)
@@ -40,10 +41,13 @@ sample_true_cases_single_onset <- function(
 #' @inheritParams conditional_cases_logp
 #'
 #' @return a number of days
-max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters) {
-  r_mean <- reporting_parameters$mean
-  r_sd <- reporting_parameters$sd
-  days_from_end <- qgamma_mean_sd(p_gamma_cutoff, r_mean, r_sd)
+max_uncertain_days <- function(p_gamma_cutoff, reporting_parameters, is_gamma_delay) {
+  r_location <- reporting_parameters$location
+  r_scale <- reporting_parameters$scale
+  if(is_gamma_delay)
+    days_from_end <- qgamma_mean_sd(p_gamma_cutoff, r_location, r_scale)
+  else
+    days_from_end <- qlnorm(p_gamma_cutoff, r_location, r_scale)
   days_from_end
 }
 
@@ -69,6 +73,7 @@ sample_cases_history <- function(
   Rt_function, serial_parameters, reporting_parameters,
   p_gamma_cutoff=0.99,
   maximise=FALSE,
+  is_gamma_delay=TRUE,
   kappa=NULL,
   is_negative_binomial=FALSE) {
 
@@ -82,9 +87,9 @@ sample_cases_history <- function(
   reporting_index_latest_onset_time <- df_latest_onset_time$reporting_piece_index[1]
   reporting_latest_onset_time <- reporting_parameters %>%
     dplyr::filter(reporting_piece_index == reporting_index_latest_onset_time)
-  reporting_latest_onset_time <- list(mean=reporting_latest_onset_time$mean[1],
-                                      sd=reporting_latest_onset_time$sd[1])
-  uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_latest_onset_time)
+  reporting_latest_onset_time <- list(location=reporting_latest_onset_time$location[1],
+                                      scale=reporting_latest_onset_time$scale[1])
+  uncertain_period <- max_uncertain_days(p_gamma_cutoff, reporting_latest_onset_time, is_gamma_delay)
 
   start_uncertain_period <- latest_onset_time - uncertain_period
 
@@ -105,8 +110,8 @@ sample_cases_history <- function(
     reporting_parameters_tmp <- reporting_parameters %>%
       dplyr::filter(reporting_piece_index == reporting_index)
     reporting_parameters_tmp <- list(
-      mean=reporting_parameters_tmp$mean,
-      sd=reporting_parameters_tmp$sd
+      location=reporting_parameters_tmp$location,
+      scale=reporting_parameters_tmp$scale
       )
     snapshots_at_onset_time_df <- snapshots_at_onset_time_df %>%
       dplyr::select("time_reported", "cases_reported")
@@ -127,6 +132,7 @@ sample_cases_history <- function(
       reporting_parameters=reporting_parameters_tmp,
       ndraws=1,
       maximise=maximise,
+      is_gamma_delay=is_gamma_delay,
       kappa=kappa,
       is_negative_binomial=is_negative_binomial)
     index_onset_time <- which(observation_history_df$time_onset==onset_time)
@@ -808,22 +814,19 @@ prepare_stan_data_and_init <- function(
   is_gamma_Rt_prior <- prior_Rt$is_gamma
   priors_reporting <- priors$reporting
 
-  current_values_R <- current_values$Rt
-  current_values_reporting <- current_values$reporting
-  theta <- matrix(c(current_values_reporting$location,
-                    current_values_reporting$scale),
-                  ncol = 2)
+  current_values_R <- current_values$R
+  theta <- current_values$theta
 
   if(is_negative_binomial) {
     prior_overdispersion <- priors$overdispersion
     prior_kappa_a <- prior_overdispersion$location
     prior_kappa_b <- prior_overdispersion$scale
 
-    current_value_overdispersion <- current_values$overdispersion
+    current_value_overdispersion <- current_values$kappa
 
     init_fn <- function() {
       list(
-        R=current_values_R$Rt,
+        R=current_values_R,
         theta=theta,
         kappa=as.array(c(current_value_overdispersion))
       )
@@ -835,7 +838,7 @@ prepare_stan_data_and_init <- function(
 
     init_fn <- function() {
       list(
-        R=current_values_R$Rt,
+        R=current_values_R,
         theta=theta
       )
     }
@@ -906,6 +909,7 @@ stan_initialisation <- function(
     stan_model) {
 
 
+  print(current_parameter_values)
   tmp <- prepare_stan_data_and_init(
     df,
     current_parameter_values,
@@ -994,12 +998,62 @@ sample_stan_Rt_reporting_overdispersion <- function(
   new_parameter_values
 }
 
+optimise_stan_Rt_reporting_overdispersion <- function(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay,
+    stan_model,
+    step_size,
+    init_fn,
+    n_nuts_per_step) {
 
 
-metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigma, log_lambda, eta, iteration) {
+  tmp <- prepare_stan_data_and_init(
+    df,
+    current_parameter_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    n_iterations,
+    is_gamma_delay)
+
+  data_stan <- tmp$data
+  init_fn <- tmp$init
+
+  unconverged <- TRUE
+  i <- 1
+  while(unconverged) {
+    print(i)
+    i <- i + 1
+    fit <- stan_model$optimize(
+      data=data_stan)
+    unconverged <- if_else(fit$return_codes()!=0, TRUE, FALSE)
+  }
+
+  print(fit$output())
+
+  print("ben")
+
+  new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial)
+
+  print("deva")
+
+  new_parameter_values
+}
+
+
+
+metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, omega, log_lambda, eta, iteration) {
 
   unconstrained_current <- model$unconstrain_variables(current)
-  unconstrained_proposed <- mvtnorm::rmvnorm(1, unconstrained_current, exp(log_lambda) * sigma)
+  unconstrained_proposed <- mvtnorm::rmvnorm(1, unconstrained_current, exp(log_lambda) * omega)
   constrained_proposed <- model$constrain_variables(unconstrained_proposed)
 
   proposed <- list(R=constrained_proposed$R,
@@ -1011,9 +1065,7 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigm
   log_p_proposed <- model$log_prob(unconstrained_proposed)
 
   log_r <- log_p_proposed - log_p_current
-  print("hello")
-  print(log_r)
-  print(proposed)
+
   log_u <- log(runif(1))
   if(log_r > log_u) {
     current <- proposed
@@ -1029,13 +1081,13 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigm
   mu <- (1 - gamma) * mu + gamma * unconstrained_current
   m1 <- matrix(unconstrained_current - mu, nrow=length(unconstrained_current))
   m_extra <- gamma * m1 %*% t(m1)
-  sigma <- (1 - gamma) * sigma + m_extra
+  omega <- (1 - gamma) * omega + m_extra
   log_lambda <- log_lambda + gamma * (alpha - 0.234)
 
   list(current=current,
        log_p_current=log_p_current,
        mu=mu,
-       sigma=sigma,
+       omega=omega,
        log_lambda=log_lambda)
 }
 
@@ -1045,8 +1097,11 @@ maximise_Rt_reporting_overdispersion <- function(current, log_p_current, model) 
   neg_log_like <- function(theta) {
     -model$log_prob(theta)
   }
+  grad_neg_log_like <- function(theta) {
+    -model$grad_log_prob(theta)
+  }
   # optim minimises by default
-  opt <- optim(uncons_current, neg_log_like)
+  opt <- optim(uncons_current, neg_log_like, method="L-BFGS-B")
   unconstrained_proposed <- opt$par
   proposed <- model$constrain_variables(unconstrained_proposed)
   log_p_current <- -opt$value
@@ -1101,8 +1156,8 @@ mcmc_single <- function(
   initial_reporting_parameters,
   initial_Rt,
   stan_model,
-  initial_overdispersion=5,
-  initial_sigma=5,
+  initial_overdispersion=NULL,
+  initial_sigma=NULL,
   initial_metropolis_parameters=1.0,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   is_negative_binomial=FALSE,
@@ -1125,24 +1180,37 @@ mcmc_single <- function(
   if(!"reporting_piece_index" %in% cnames)
     snapshot_with_Rt_index_df$reporting_piece_index <- 1
 
-  if(initial_overdispersion <= 0)
-    stop("Initial overdispersion value (for a negative binomial renewal model) must be positive.")
-  overdispersion_current <- initial_overdispersion
+  if(is_negative_binomial) {
 
-  if(is_negative_binomial)
-    if(!"overdispersion" %in% names(priors))
-      stop("If negative binomial model is used a prior must be provided for the overdispersion parameter.")
+    if(is.null(initial_overdispersion))
+      stop("Initial overdispersion value (for a negative binomial renewal model) must not be NULL.")
 
-  if(is_negative_binomial)
-    if(maximise)
-      stop("Maximisation with a negative binomial renewal model is not yet allowed.")
+    if(initial_overdispersion <= 0)
+      stop("Initial overdispersion value (for a negative binomial renewal model) must be positive.")
+
+    overdispersion_current <- initial_overdispersion
+  }
+
+  is_rw_Rt_prior <- FALSE
+  if(!priors$Rt$is_gamma) { # denotes RW prior on Rt
+
+    is_rw_Rt_prior <- TRUE
+
+    if(is.null(initial_sigma))
+      stop("Initial sigma value must not be NULL.")
+
+    if(initial_sigma <= 0)
+      stop("Initial sigma value must be positive.")
+
+    sigma_current <- initial_sigma
+  }
 
   reporting_current <- initial_reporting_parameters
   if(methods::is(reporting_current, "list")) { # if only a single list provided
     reporting_current <- dplyr::tibble(
       reporting_piece_index=1,
-      location=reporting_current$mean,
-      scale=reporting_current$sd
+      location=reporting_current$location,
+      scale=reporting_current$scale
     )
   }
   num_reporting_parameters <- max(reporting_current$reporting_piece_index)
@@ -1188,18 +1256,12 @@ mcmc_single <- function(
     df_temp <- sample_cases_history(
       df_current, max_cases,
       Rt_function, serial_parameters,
-      reporting_current %>% dplyr::rename(mean=location, sd=scale),
+      reporting_current,
       p_gamma_cutoff=p_gamma_cutoff,
       maximise=maximise,
+      is_gamma_delay=is_gamma_delay,
       kappa=overdispersion_current,
       is_negative_binomial=is_negative_binomial)
-
-    df_hello <- df_temp %>%
-      group_by(time_onset) %>%
-      summarise(
-        cases_estimated=last(cases_estimated)
-      )
-    print(rev(df_hello$cases_estimated)[1:10])
 
     cases_history_df <- df_running %>%
       dplyr::select(time_onset, Rt_index) %>%
@@ -1219,15 +1281,21 @@ mcmc_single <- function(
       dplyr::select(Rt_index, Rt) %>%
       unique()
 
-    # TODO: include kappa and sigma parameters, optionally
-    current_values <- list(Rt=current_Rt,
-                           reporting=reporting_current)
+    theta <- matrix(c(reporting_current$location,
+                      reporting_current$scale),
+                    ncol = 2)
+    current <- list(R=current_Rt$Rt,
+                    theta=theta)
+    if(is_negative_binomial)
+      current$kappa <- overdispersion_current
+    if(is_rw_Rt_prior)
+      current$sigma <- sigma_current
 
     # just runs model for one iteration to give access to log_p
     model <- stan_initialisation(
       df_temp %>%
         dplyr::rename(cases_true=cases_estimated),
-      current_values,
+      current,
       priors,
       is_negative_binomial,
       is_rw_prior,
@@ -1238,37 +1306,37 @@ mcmc_single <- function(
 
     if(i == 1) {
 
-      # TODO: tidy up as I am defining current twice: once here, and current_values above
-      # also need to add kappa and sigma optionally
-      current <- list(R=current_values$Rt$Rt,
-                      theta=matrix(unlist(reporting_current[, c("location", "scale")]), ncol=2, nrow=1))
       vars <- model$unconstrain_variables(current)
       log_p_current <- model$log_prob(vars)
 
       # adaptive covariance parameters
       mu <- vars
-      sigma <- diag(initial_metropolis_parameters, nrow = length(vars), ncol = length(vars))
+      omega <- diag(initial_metropolis_parameters, nrow = length(vars), ncol = length(vars))
       log_lambda <- 0
       eta <- 0.6 # standard value used in adaptive covariance
     }
 
     if(!maximise) {
+
       res <- metropolis_step_Rt_reporting_overdispersion(
         current, model,
-        mu, sigma, log_lambda,
+        mu, omega, log_lambda,
         eta, i)
       mu <- res$mu
-      sigma <- res$sigma
+      omega <- res$omega
       log_lambda <- res$log_lambda
+
     } else {
+
       res <- maximise_Rt_reporting_overdispersion(
         current, log_p_current, model
       )
+
     }
 
     log_p_current <- res$log_p_current
     current <- res$current
-    print(current$R)
+    overdispersion_current <- current$kappa
 
     df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
@@ -1301,6 +1369,7 @@ mcmc_single <- function(
     }
 
     if(is_negative_binomial) {
+
       overdipersion_tmp <- dplyr::tibble(
         overdispersion=current$kappa,
         iteration=i)
@@ -1310,7 +1379,20 @@ mcmc_single <- function(
       else
         overdispersion_samples <- overdispersion_samples %>%
         dplyr::bind_rows(overdipersion_tmp)
-   }
+    }
+
+    if(is_rw_Rt_prior) {
+
+      sigma_tmp <- dplyr::tibble(
+        overdispersion=current$sigma,
+        iteration=i)
+
+      if(i == 1)
+        sigma_samples <- sigma_tmp
+      else
+        sigma_samples <- sigma_samples %>%
+          dplyr::bind_rows(sigma_tmp)
+    }
 
     # store cases
     cases_history_df <- cases_history_df %>%
@@ -1353,8 +1435,15 @@ mcmc_single <- function(
     Rt=Rt_samples,
     reporting=reporting_samples)
 
-  if(is_negative_binomial)
-    list_results$overdispersion <- overdispersion_samples
+  if(is_negative_binomial) {
+    if(!is_rw_Rt_prior)
+      list_results$other <- overdispersion_samples
+    else
+      list_results$other <- overdispersion_samples %>% left_join(sigma_samples, by="iteration")
+  } else{
+      list_results$other <- sigma_samples
+  }
+
 
   list_results
 }

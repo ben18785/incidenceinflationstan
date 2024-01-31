@@ -78,9 +78,10 @@ gamma_discrete_pmf <- function(day, serial_parameters){
 }
 
 check_parameter_names <- function(reporting_parameters, serial_parameters) {
-  correct_names <- c("mean", "sd")
-  if(!all(correct_names %in% names(reporting_parameters)))
-    stop("reporting_parameters must contain 'mean' and 'sd'.")
-  if(!all(correct_names %in% names(serial_parameters)))
+  correct_names_r <- c("location", "scale")
+  correct_names_s <- c("mean", "sd")
+  if(!all(correct_names_r %in% names(reporting_parameters)))
+    stop("reporting_parameters must contain 'location' and 'scale'.")
+  if(!all(correct_names_s %in% names(serial_parameters)))
     stop("serial_parameters must contain 'mean' and 'sd'.")
 }

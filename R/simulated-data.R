@@ -6,18 +6,24 @@
 #'
 #' @param t_1 observation time subsequent to time when case originates: t1>=t0
 #' @param t_onset time when case originates
-#' @param reporting_parameters named list of 'mean' and 'sd' of gamma distribution
+#' @param reporting_parameters named list of 'location' and 'scale' of distribution
 #' characterising the reporting delay distribution
+#' @param is_gamma_delay if TRUE, the reporting delay distribution is thought to
+#' be a gamma; if FALSE, a lognormal distribution
 #'
 #' @return a probability
 #' @examples
-#' incidenceinflation:::undetected_prob(2, 1, list(mean=10, sd=5))
-undetected_prob <- function(t_1, t_onset, reporting_parameters){
+#' incidenceinflation:::undetected_prob(2, 1, list(location=10, scale=5))
+undetected_prob <- function(t_1, t_onset, reporting_parameters, is_gamma_delay){
   if(t_1 < t_onset)
     stop("t_1 must equal or exceed t_onset")
-  delay_mean <- reporting_parameters$mean
-  delay_sd <- reporting_parameters$sd
-  1 - pgamma_mean_sd(t_1 - t_onset, delay_mean, delay_sd)
+  delay_location <- reporting_parameters$location
+  delay_scale <- reporting_parameters$scale
+
+  if(is_gamma_delay)
+    1 - pgamma_mean_sd(t_1 - t_onset, delay_location, delay_scale)
+  else
+    1 - plnorm(t_1 - t_onset, delay_location, delay_scale)
 }
 
 #' Probability a case is detected by a later time given it was unobserved
@@ -36,12 +42,12 @@ undetected_prob <- function(t_1, t_onset, reporting_parameters){
 #'
 #' @return a probability
 detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
-                                           reporting_parameters){
+                                           reporting_parameters, is_gamma_delay){
   if(day_2 < day_1)
     stop("second observation date must be at same time or after first")
-  (undetected_prob(day_1 + 0.5, day_onset, reporting_parameters) -
-      undetected_prob(day_2 + 0.5, day_onset, reporting_parameters)) /
-    undetected_prob(day_1 + 0.5, day_onset, reporting_parameters)
+
+  denom <- undetected_prob(day_1 + 0.5, day_onset, reporting_parameters, is_gamma_delay)
+  (denom - undetected_prob(day_2 + 0.5, day_onset, reporting_parameters, is_gamma_delay)) / denom
 }
 
 #' Cases arising on a given day which are reported between two subsequent days
@@ -60,16 +66,18 @@ detected_after_unobserved_prob <- function(day_2, day_1, day_onset,
 #'
 #' @return a count representing number of cases reported between day_1 and day_2
 observed_cases_single <- function(cases_observed, cases_true, day_2, day_1, day_onset,
-                                  reporting_parameters){
+                                  reporting_parameters, is_gamma_delay){
   if(cases_true < cases_observed)
     stop("true case count must exceed reported")
   I_remaining <- cases_true - cases_observed
-  if(I_remaining == 0)
+  if(I_remaining == 0) {
     cases <- 0
-  else
-    cases <- stats::rbinom(1, I_remaining,
-                           detected_after_unobserved_prob(day_2, day_1, day_onset,
-                                                          reporting_parameters))
+  } else {
+    prob <- detected_after_unobserved_prob(day_2, day_1, day_onset,
+                                           reporting_parameters,
+                                           is_gamma_delay)
+    cases <- stats::rbinom(1, I_remaining, prob)
+  }
   cases
 }
 
@@ -82,7 +90,7 @@ observed_cases_single <- function(cases_observed, cases_true, day_2, day_1, day_
 #'
 #' @return a vector of reported case counts of same length as days_reporting
 observed_cases_trajectory <- function(cases_true, days_reporting, day_onset,
-                                      reporting_parameters){
+                                      reporting_parameters, is_gamma_delay){
 
   I_observed <- vector(length = length(days_reporting))
   for(i in 1:length(days_reporting)){
@@ -97,7 +105,8 @@ observed_cases_trajectory <- function(cases_true, days_reporting, day_onset,
                                        days_reporting[i],
                                        day_previous_report,
                                        day_onset,
-                                       reporting_parameters)
+                                       reporting_parameters,
+                                       is_gamma_delay)
     I_observed[i] <- I_previous_obs + new_cases
   }
   I_observed
@@ -198,22 +207,22 @@ true_cases <- function(days_total, Rt_function, kappa, serial_parameters,
 #' @param time_onsets a vector of symptom onset times
 #' @inheritParams undetected_prob
 #'
-#' @return a tibble with three columns: 'time_onset', 'mean', 'sd'
+#' @return a tibble with three columns: 'time_onset', 'location', 'scale'
 create_reporting_from_single_parameters_df <- function(time_onsets,
     reporting_parameters) {
 
   dplyr::tibble(time_onset=time_onsets,
-                mean=reporting_parameters$mean,
-                sd=reporting_parameters$sd
+                location=reporting_parameters$location,
+                scale=reporting_parameters$scale
                 )
 }
 
 #' Generate reported case trajectories for each day when cases appear
 #'
 #' @param cases_true a vector of true cases originating each day
-#' @param reporting_parameters either a named list of 'mean' and 'sd' of gamma
+#' @param reporting_parameters either a named list of 'location' and 'scale' of gamma or lognormal
 #' distribution indicating a single reporting delay distribution for the whole period
-#' or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+#' or a tibble with columns: 'time_onset', 'location', 'scale' indicating the reporting
 #' delay distribution for each time period
 #' @param days_max_follow_up max days at which to simulate reporting case
 #' trajectory
@@ -223,8 +232,9 @@ create_reporting_from_single_parameters_df <- function(time_onsets,
 #' @importFrom magrittr "%>%"
 #' @examples
 #' library(incidenceinflation)
-#' observed_cases(stats::rpois(5, 5), list(mean=5, sd=1))
+#' observed_cases(stats::rpois(5, 5), list(location=5, scale=1))
 observed_cases <- function(cases_true, reporting_parameters,
+                           is_gamma_delay=TRUE,
                            days_max_follow_up=30){
 
   if(methods::is(reporting_parameters, "list"))
@@ -240,13 +250,14 @@ observed_cases <- function(cases_true, reporting_parameters,
 
     a_max <- min(c(d_max, t + days_max_follow_up))
     obs_time <- seq(t, a_max, 1)
-    reporting_parameters_current <- list(mean=reporting_parameters$mean[t],
-                                         sd=reporting_parameters$sd[t])
+    reporting_parameters_current <- list(location=reporting_parameters$location[t],
+                                         scale=reporting_parameters$scale[t])
     cases_obs_trajec <- observed_cases_trajectory(
       cases_true=cases_true[t],
       days_reporting=obs_time,
       day_onset=t,
-      reporting_parameters_current)
+      reporting_parameters_current,
+      is_gamma_delay)
 
     # stack into data frame containing identifying info
     I_obs_single_onset <- dplyr::tibble(
@@ -332,7 +343,7 @@ thin_series <- function(case_obs) {
 #' kappa <- 2
 #'
 #' # reporting delays
-#' r_params <- list(mean=10, sd=5)
+#' r_params <- list(location=10, scale=5)
 #' reported_cases <- generate_snapshots(
 #'     days_total, Rt_function,
 #'     s_params, r_params)

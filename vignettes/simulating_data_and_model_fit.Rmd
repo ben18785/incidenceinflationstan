@@ -36,7 +36,7 @@ Rt_function <- stats::approxfun(1:days_total, v_Rt)
 s_params <- list(mean=5, sd=3)
 
 # negative binomial over-dispersion parameter
-kappa <- 1000
+kappa <- 5
 
 # generate series
 cases <- true_cases(days_total, Rt_function, kappa, s_params,
@@ -57,7 +57,7 @@ In our model, we assume that cases arising on a given day aren't necessarily obs
 We now use the true case series generated previous to simulate observed case trajectories: there is a trajectory for each onset day.
 ```{r}
 # reporting delay distribution (assumed gamma)
-r_params <- list(mean=10, sd=3)
+r_params <- list(location=10, scale=3)
 
 df <- observed_cases(cases, r_params, days_max_follow_up=40)
 glimpse(df)
@@ -124,13 +124,13 @@ df %>%
 Trying to estimate cases but assuming we know the Rt values over time, the reporting delay distribution and the serial delay distribution.
 ```{r}
 days_total <- 100
-kappa <- 1000
+kappa <- 5
 df <- generate_snapshots(days_total, Rt_function,
                          s_params, r_params,
                           kappa=kappa, thinned=T) %>% 
   mutate(reporting_piece_index=1) # denotes a single reporting delay distribution
 max_cases <- 5000
-r_params_df <- tibble(mean=r_params$mean, sd=r_params$sd,
+r_params_df <- tibble(location=r_params$location, scale=r_params$scale,
                       reporting_piece_index=1)
 df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params_df, maximise = F)
 df_est %>% 
@@ -214,16 +214,20 @@ Rt_index_lookup <- tibble(
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
   left_join(Rt_index_lookup)
 
-initial_reporting_parameters <- list(mean=5, sd=3)
+initial_reporting_parameters <- list(location=5, scale=2)
 priors <- list(Rt=Rt_prior,
                reporting=list(mean_mu=10,
                               mean_sigma=10,
                               sd_mu=10,
                               sd_sigma=5),
+               overdispersion=list(
+                 location=0,
+                 scale=10
+               ),
                max_cases=5000)
 
 
-stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_3.stan",
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
 
@@ -235,7 +239,10 @@ opt <- mcmc_single(5,
   initial_reporting_parameters,
   initial_Rt,
   stan_model,
-  maximise = TRUE)
+  maximise = TRUE,
+  is_negative_binomial=TRUE,
+  initial_overdispersion = 10)
+
 test <- opt
 res <- test
 new_init_reporting <- res$reporting %>% 
@@ -245,20 +252,23 @@ new_init_reporting <- res$reporting %>%
     scale=last(scale)
   )
 new_init_reporting
+initial_overdispersion <- last(opt$other$overdispersion)
 
 new_init_Rt <- res$Rt %>% 
   left_join(snapshot_with_Rt_index_df) %>% 
   group_by(Rt_index) %>% 
   summarise(Rt=last(Rt))
 test <- mcmc_single(
-  600,
+  300,
   snapshot_with_Rt_index_df,
   priors,
   s_params,
   initial_cases_true=res$cases %>% group_by(time_onset) %>% summarise(cases_true=last(cases_true)),
   initial_reporting_parameters=new_init_reporting,
   initial_Rt=new_init_Rt,
-  stan_model
+  stan_model,
+  initial_overdispersion = initial_overdispersion,
+  is_negative_binomial = TRUE
 )
 res <- test
 b <- test$Rt
@@ -277,14 +287,14 @@ df_1 <- df %>%
   left_join(snapshot_with_Rt_index_df %>% select(-c(cases_reported, time_reported)) %>% unique)
 current_values <- list(
   Rt=tibble(Rt=c(1.5, 1.5, 0.5, 1.5, 1.5)),
-  reporting=list(location=10, scale=3)
+  theta=matrix(c(10, 3), ncol = 2)
 )
 model <- incidenceinflation:::stan_initialisation(df_1,
     current_values,
     priors,
     is_negative_binomial=FALSE,
     is_rw_prior=FALSE,
-    serial_parameters=serial_parameters,
+    serial_parameters=s_params,
     serial_max=40,
     is_gamma_delay=TRUE,
     stan_model=stan_model)

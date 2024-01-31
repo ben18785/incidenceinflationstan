@@ -132,10 +132,10 @@ model {
   }
 
   // priors
-  // for (i in 1 : n_reporting_window) {
-  //   theta[i, 1] ~ gamma_mean_sd(prior_theta_1_a, prior_theta_1_b);
-  //   theta[i, 2] ~ gamma_mean_sd(prior_theta_2_a, prior_theta_2_b);
-  // }
+  for (i in 1 : n_reporting_window) {
+    theta[i, 1] ~ gamma_mean_sd(prior_theta_1_a, prior_theta_1_b);
+    theta[i, 2] ~ gamma_mean_sd(prior_theta_2_a, prior_theta_2_b);
+  }
 }
 
 

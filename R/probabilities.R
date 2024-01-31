@@ -18,11 +18,12 @@
 #'
 #' @return a log-probability or vector of log-probabilities
 observation_process_single_logp <- function(cases_true, cases_day_2, cases_day_1, day_2, day_1,
-                                            day_onset, reporting_parameters){
+                                            day_onset, reporting_parameters, is_gamma_delay){
   cases_observed <- cases_day_2 - cases_day_1
   cases_remaining <- cases_true - cases_day_1
   p_detect <- detected_after_unobserved_prob(day_2, day_1, day_onset,
-                                             reporting_parameters)
+                                             reporting_parameters,
+                                             is_gamma_delay)
   stats::dbinom(cases_observed, cases_remaining, p_detect, log = T)
 }
 
@@ -45,7 +46,8 @@ observation_process_single_logp <- function(cases_true, cases_day_2, cases_day_1
 #'
 #' @return a log-probability or vector of log-probabilities
 observation_process_logp <- function(observation_df, cases_true,
-                                     day_onset, reporting_parameters){
+                                     day_onset, reporting_parameters,
+                                     is_gamma_delay){
   observation_days <- observation_df$time_reported
   observation_cases <- observation_df$cases_reported
   change_days <- diff(observation_days)
@@ -64,7 +66,8 @@ observation_process_logp <- function(observation_df, cases_true,
                                          day_2=observation_days[i + 1],
                                          day_1=observation_days[i],
                                          day_onset=day_onset,
-                                         reporting_parameters=reporting_parameters)
+                                         reporting_parameters=reporting_parameters,
+                                         is_gamma_delay=is_gamma_delay)
     logp <- logp + logp_day
   }
   logp
@@ -109,6 +112,7 @@ state_process_logp <- function(cases_true, cases_history, Rt, serial_parameters,
 #' @return an (unnormalised) log-probability or vector of such log-probabilities
 conditional_cases_logp <- function(cases_true, observation_df, cases_history,
                                    Rt, day_onset, serial_parameters, reporting_parameters,
+                                   is_gamma_delay,
                                    kappa=NULL, is_negative_binomial=FALSE) {
 
   logp_observation <- 0
@@ -116,7 +120,8 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
     logp_observation <- observation_process_logp(observation_df=observation_df,
                                                  cases_true=cases_true,
                                                  day_onset=day_onset,
-                                                 reporting_parameters=reporting_parameters)
+                                                 reporting_parameters=reporting_parameters,
+                                                 is_gamma_delay=is_gamma_delay)
   logp_state <- state_process_logp(cases_true=cases_true,
                                    cases_history=cases_history,
                                    Rt=Rt,
