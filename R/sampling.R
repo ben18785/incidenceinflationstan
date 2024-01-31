@@ -772,6 +772,22 @@ extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
   df_tmp
 }
 
+#' Title
+#'
+#' @param df
+#' @param current_values
+#' @param priors
+#' @param is_negative_binomial
+#' @param is_rw_prior
+#' @param serial_parameters
+#' @param serial_max
+#' @param n_iterations
+#' @param is_gamma_delay
+#'
+#' @return
+#' @export
+#'
+#' @examples
 prepare_stan_data_and_init <- function(
     df,
     current_values,
@@ -862,6 +878,22 @@ prepare_stan_data_and_init <- function(
   list(data=data_stan, init=init_fn)
 }
 
+#' Title
+#'
+#' @param df
+#' @param current_parameter_values
+#' @param priors
+#' @param is_negative_binomial
+#' @param is_rw_prior
+#' @param serial_parameters
+#' @param serial_max
+#' @param is_gamma_delay
+#' @param stan_model
+#'
+#' @return
+#' @export
+#'
+#' @examples
 stan_initialisation <- function(
     df,
     current_parameter_values,
@@ -964,7 +996,7 @@ sample_stan_Rt_reporting_overdispersion <- function(
 
 
 
-metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, model, mu, sigma, log_lambda, eta, iteration) {
+metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, sigma, log_lambda, eta, iteration) {
 
   unconstrained_current <- model$unconstrain_variables(current)
   unconstrained_proposed <- mvtnorm::rmvnorm(1, unconstrained_current, exp(log_lambda) * sigma)
@@ -975,9 +1007,13 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, 
                    kappa=constrained_proposed$kappa,
                    sigma=constrained_proposed$sigma)
 
+  log_p_current <- model$log_prob(unconstrained_current) # needs recalculation since cases have changed
   log_p_proposed <- model$log_prob(unconstrained_proposed)
 
   log_r <- log_p_proposed - log_p_current
+  print("hello")
+  print(log_r)
+  print(proposed)
   log_u <- log(runif(1))
   if(log_r > log_u) {
     current <- proposed
@@ -1003,6 +1039,19 @@ metropolis_step_Rt_reporting_overdispersion <- function(current, log_p_current, 
        log_lambda=log_lambda)
 }
 
+
+maximise_Rt_reporting_overdispersion <- function(current, log_p_current, model) {
+  uncons_current <- model$unconstrain_variables(current)
+  neg_log_like <- function(theta) {
+    -model$log_prob(theta)
+  }
+  # optim minimises by default
+  opt <- optim(uncons_current, neg_log_like)
+  unconstrained_proposed <- opt$par
+  proposed <- model$constrain_variables(unconstrained_proposed)
+  log_p_current <- -opt$value
+  list(current=proposed, log_p_current=log_p_current)
+}
 
 #' Runs MCMC or optimisation to estimate Rt, cases and reporting parameters
 #'
@@ -1089,12 +1138,13 @@ mcmc_single <- function(
       stop("Maximisation with a negative binomial renewal model is not yet allowed.")
 
   reporting_current <- initial_reporting_parameters
-  if(methods::is(reporting_current, "list")) # if only a single list provided
+  if(methods::is(reporting_current, "list")) { # if only a single list provided
     reporting_current <- dplyr::tibble(
       reporting_piece_index=1,
-      mean=reporting_current$mean,
-      sd=reporting_current$sd
+      location=reporting_current$mean,
+      scale=reporting_current$sd
     )
+  }
   num_reporting_parameters <- max(reporting_current$reporting_piece_index)
 
   df_running <- snapshot_with_Rt_index_df %>%
@@ -1137,11 +1187,19 @@ mcmc_single <- function(
 
     df_temp <- sample_cases_history(
       df_current, max_cases,
-      Rt_function, serial_parameters, reporting_current,
+      Rt_function, serial_parameters,
+      reporting_current %>% dplyr::rename(mean=location, sd=scale),
       p_gamma_cutoff=p_gamma_cutoff,
       maximise=maximise,
       kappa=overdispersion_current,
       is_negative_binomial=is_negative_binomial)
+
+    df_hello <- df_temp %>%
+      group_by(time_onset) %>%
+      summarise(
+        cases_estimated=last(cases_estimated)
+      )
+    print(rev(df_hello$cases_estimated)[1:10])
 
     cases_history_df <- df_running %>%
       dplyr::select(time_onset, Rt_index) %>%
@@ -1160,33 +1218,30 @@ mcmc_single <- function(
     current_Rt <- df_running %>%
       dplyr::select(Rt_index, Rt) %>%
       unique()
-    reporting_current$location <- reporting_current$mean
-    reporting_current$scale <- reporting_current$sd
 
     # TODO: include kappa and sigma parameters, optionally
     current_values <- list(Rt=current_Rt,
                            reporting=reporting_current)
 
-
     # just runs model for one iteration to give access to log_p
-    if(i == 1) {
+    model <- stan_initialisation(
+      df_temp %>%
+        dplyr::rename(cases_true=cases_estimated),
+      current_values,
+      priors,
+      is_negative_binomial,
+      is_rw_prior,
+      serial_parameters,
+      serial_max,
+      is_gamma_delay,
+      stan_model)
 
-      model <- stan_initialisation(
-        df_temp %>%
-          dplyr::rename(cases_true=cases_estimated),
-        current_values,
-        priors,
-        is_negative_binomial,
-        is_rw_prior,
-        serial_parameters,
-        serial_max,
-        is_gamma_delay,
-        stan_model)
+    if(i == 1) {
 
       # TODO: tidy up as I am defining current twice: once here, and current_values above
       # also need to add kappa and sigma optionally
       current <- list(R=current_values$Rt$Rt,
-                      theta=matrix(unlist(reporting_current[, 4:5]), ncol=2, nrow=1))
+                      theta=matrix(unlist(reporting_current[, c("location", "scale")]), ncol=2, nrow=1))
       vars <- model$unconstrain_variables(current)
       log_p_current <- model$log_prob(vars)
 
@@ -1197,15 +1252,23 @@ mcmc_single <- function(
       eta <- 0.6 # standard value used in adaptive covariance
     }
 
-    res <- metropolis_step_Rt_reporting_overdispersion(
-      current, log_p_current, model,
-      mu, sigma, log_lambda,
-      eta, i)
+    if(!maximise) {
+      res <- metropolis_step_Rt_reporting_overdispersion(
+        current, model,
+        mu, sigma, log_lambda,
+        eta, i)
+      mu <- res$mu
+      sigma <- res$sigma
+      log_lambda <- res$log_lambda
+    } else {
+      res <- maximise_Rt_reporting_overdispersion(
+        current, log_p_current, model
+      )
+    }
+
     log_p_current <- res$log_p_current
     current <- res$current
-    mu <- res$mu
-    sigma <- res$sigma
-    log_lambda <- res$log_lambda
+    print(current$R)
 
     df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
@@ -1217,6 +1280,8 @@ mcmc_single <- function(
       reporting_piece_index=seq_along(location),
       iteration=i
     )
+    reporting_current <- reporting_tmp %>%
+      dplyr::filter(iteration == i)
 
     if(i == 1)
       reporting_samples <- reporting_tmp

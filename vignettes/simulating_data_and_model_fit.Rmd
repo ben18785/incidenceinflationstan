@@ -36,7 +36,7 @@ Rt_function <- stats::approxfun(1:days_total, v_Rt)
 s_params <- list(mean=5, sd=3)
 
 # negative binomial over-dispersion parameter
-kappa <- 10
+kappa <- 1000
 
 # generate series
 cases <- true_cases(days_total, Rt_function, kappa, s_params,
@@ -194,6 +194,10 @@ Rt_df_po %>%
 
 ```{r}
 snapshot_with_Rt_index_df <- df
+# poor initial estimate of cases
+initial_cases_true <- df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_reported))
 initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
 initial_Rt <- tribble(~Rt_index, ~Rt,
@@ -211,28 +215,52 @@ snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
   left_join(Rt_index_lookup)
 
 initial_reporting_parameters <- list(mean=5, sd=3)
-serial_parameters <- list(mean=5, sd=3)
 priors <- list(Rt=Rt_prior,
-               reporting=list(mean_mu=5,
+               reporting=list(mean_mu=10,
                               mean_sigma=10,
-                              sd_mu=3,
+                              sd_mu=10,
                               sd_sigma=5),
                max_cases=5000)
 
 
-stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_2.stan",
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_3.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
-test <- mcmc_single(
-  400,
+
+opt <- mcmc_single(5,
   snapshot_with_Rt_index_df,
   priors,
-  serial_parameters,
+  s_params,
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
+  stan_model,
+  maximise = TRUE)
+test <- opt
+res <- test
+new_init_reporting <- res$reporting %>% 
+  group_by(reporting_piece_index) %>% 
+  summarise(
+    location=last(location),
+    scale=last(scale)
+  )
+new_init_reporting
+
+new_init_Rt <- res$Rt %>% 
+  left_join(snapshot_with_Rt_index_df) %>% 
+  group_by(Rt_index) %>% 
+  summarise(Rt=last(Rt))
+test <- mcmc_single(
+  600,
+  snapshot_with_Rt_index_df,
+  priors,
+  s_params,
+  initial_cases_true=res$cases %>% group_by(time_onset) %>% summarise(cases_true=last(cases_true)),
+  initial_reporting_parameters=new_init_reporting,
+  initial_Rt=new_init_Rt,
   stan_model
 )
+res <- test
 b <- test$Rt
 theta <- test$reporting
 b %>% 
@@ -244,13 +272,55 @@ theta %>%
   ggplot(aes(x=iteration, y=value, colour=name)) +
   geom_line()
 
+# time_onset, Rt_index, cases_true
+df_1 <- df %>% 
+  left_join(snapshot_with_Rt_index_df %>% select(-c(cases_reported, time_reported)) %>% unique)
+current_values <- list(
+  Rt=tibble(Rt=c(1.5, 1.5, 0.5, 1.5, 1.5)),
+  reporting=list(location=10, scale=3)
+)
+model <- incidenceinflation:::stan_initialisation(df_1,
+    current_values,
+    priors,
+    is_negative_binomial=FALSE,
+    is_rw_prior=FALSE,
+    serial_parameters=serial_parameters,
+    serial_max=40,
+    is_gamma_delay=TRUE,
+    stan_model=stan_model)
+
+current_values_1 <- list(
+  R=c(1.6717150, 1.5452372, 0.4045715, 1.5275197, 1.4537464),
+  theta=matrix(c(10, 3), nrow=1, ncol=2)
+)
+uncons <- model$unconstrain_variables(current_values_1)
+model$log_prob(uncons)
+f_fn <- function(theta) {
+  -model$log_prob(theta)
+}
+vals <- optim(uncons, f_fn)
+model$constrain_variables(vals$par)
+
+v_Rt <- c(rep(1.6717150, 20),  rep(1.5452372, 20), rep(0.4045715, 20), rep(1.5275197, 20), rep(1.4537464, 20))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+    
+temp <- sample_cases_history(
+      df %>% select(-cases_true), max_cases=5000,
+      Rt_function, s_params,
+      dplyr::tibble(mean=9.5, sd=3.02, reporting_piece_index=1),
+      maximise = TRUE)
+
+
+opt <- incidenceinflation:::maximise_Rt_reporting_overdispersion(
+        current, log_p_current, model
+      )
 
 # running MCMC across 2 chains
 ## uncomment to run in parallel
 # library(doParallel)
 # cl <- makeCluster(2)
 # registerDoParallel(cl)
-res <- mcmc(500,
+res <- mcmc(800,
   snapshot_with_Rt_index_df,
   priors,
   serial_parameters,
@@ -258,7 +328,7 @@ res <- mcmc(500,
   initial_reporting_parameters,
   initial_Rt,
   stan_model,
-  nchains = 2,
+  nchains = 1,
   is_parallel = FALSE)
 ## uncomment if running in parallel
 # stopCluster(cl)
@@ -269,6 +339,14 @@ b %>%
   ggplot(aes(x=iteration, y=Rt, colour=as.factor(chain))) +
   geom_line() +
   facet_wrap(~Rt_index)
+theta %>% 
+  pivot_longer(-c(reporting_piece_index, iteration, chain)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=as.factor(chain))) +
+  geom_line() +
+  facet_wrap(~name)
+
+cases <- res$cases
+
 ```
 
 Check convergence diagnostics
@@ -284,7 +362,7 @@ summarise_draws(results_posterior_format$Rt)
 
 Examine results
 ```{r}
-onsets <- 90:100
+onsets <- 91:100
 cases_true_df <- df %>% 
   filter(time_onset %in% onsets) %>% 
   rename(cases_known=cases_true)
