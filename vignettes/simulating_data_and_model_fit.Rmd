@@ -207,7 +207,7 @@ initial_Rt <- tribble(~Rt_index, ~Rt,
                       4, 1.0,
                       5, 1.0)
 Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
-Rt_prior <- list(location=1.5, scale=2, is_gamma=TRUE)
+Rt_prior <- list(location=1.5, scale=2, is_gamma=FALSE)
 Rt_index_lookup <- tibble(
   time_onset=seq_along(Rt_indices),
   Rt_index=Rt_indices)
@@ -227,10 +227,10 @@ priors <- list(Rt=Rt_prior,
                max_cases=5000)
 
 
-stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal.stan",
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
-
+options(cmdstanr_warn_inits = FALSE)
 opt <- mcmc_single(5,
   snapshot_with_Rt_index_df,
   priors,
@@ -241,7 +241,8 @@ opt <- mcmc_single(5,
   stan_model,
   maximise = TRUE,
   is_negative_binomial=TRUE,
-  initial_overdispersion = 10)
+  initial_overdispersion = 10,
+  initial_sigma=1)
 
 test <- opt
 res <- test
@@ -435,6 +436,7 @@ measles_NL_2013 %>%
   ggplot(aes(x=time_onset, y=time_delay)) +
   geom_line()
 ```
+
 Prepare data for fitting
 ```{r}
 snapshot_with_Rt_index_df <- thin_series(measles_NL_2013) %>% 

@@ -1097,6 +1097,8 @@ maximise_Rt_reporting_overdispersion <- function(current, log_p_current, model) 
   neg_log_like <- function(theta) {
     -model$log_prob(theta)
   }
+
+  # gradient something led to errors being thrown so not using in optimisation
   grad_neg_log_like <- function(theta) {
     -model$grad_log_prob(theta)
   }
@@ -1337,6 +1339,7 @@ mcmc_single <- function(
     log_p_current <- res$log_p_current
     current <- res$current
     overdispersion_current <- current$kappa
+    sigma_current <- current$sigma
 
     df_Rt <- dplyr::tibble(Rt=current$R, Rt_index=seq_along(Rt))
     df_running <- df_temp %>%
@@ -1384,7 +1387,7 @@ mcmc_single <- function(
     if(is_rw_Rt_prior) {
 
       sigma_tmp <- dplyr::tibble(
-        overdispersion=current$sigma,
+        sigma=current$sigma,
         iteration=i)
 
       if(i == 1)
