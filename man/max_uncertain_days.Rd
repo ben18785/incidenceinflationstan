@@ -4,14 +4,17 @@
 \alias{max_uncertain_days}
 \title{Calculates max number of days we are uncertain about reporting}
 \usage{
-max_uncertain_days(p_gamma_cutoff, reporting_parameters)
+max_uncertain_days(p_gamma_cutoff, reporting_parameters, is_gamma_delay)
 }
 \arguments{
 \item{p_gamma_cutoff}{a p value (0 <= p <= 1) indicating the threshold above which
 we deem certainty}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 }
 \value{
 a number of days

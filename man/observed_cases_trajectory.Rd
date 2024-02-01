@@ -9,7 +9,8 @@ observed_cases_trajectory(
   cases_true,
   days_reporting,
   day_onset,
-  reporting_parameters
+  reporting_parameters,
+  is_gamma_delay
 )
 }
 \arguments{
@@ -19,8 +20,11 @@ observed_cases_trajectory(
 
 \item{day_onset}{day when case originates}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 }
 \value{
 a vector of reported case counts of same length as days_reporting

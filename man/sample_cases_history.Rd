@@ -12,6 +12,7 @@ sample_cases_history(
   reporting_parameters,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
+  is_gamma_delay = TRUE,
   kappa = NULL,
   is_negative_binomial = FALSE
 )
@@ -34,6 +35,9 @@ we deem certainty}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 
 \item{kappa}{overdispersion parameter}
 

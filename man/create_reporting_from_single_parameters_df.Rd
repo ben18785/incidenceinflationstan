@@ -10,11 +10,11 @@ create_reporting_from_single_parameters_df(time_onsets, reporting_parameters)
 \arguments{
 \item{time_onsets}{a vector of symptom onset times}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
 }
 \value{
-a tibble with three columns: 'time_onset', 'mean', 'sd'
+a tibble with three columns: 'time_onset', 'location', 'scale'
 }
 \description{
 Creates a reporting parameter tibble with a single set of reporting

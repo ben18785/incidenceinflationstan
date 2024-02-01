@@ -13,9 +13,7 @@ sample_Rt_single_piece(
   kappa = NULL,
   serial_max = 40,
   ndraws = 1,
-  maximise = FALSE,
-  is_negative_binomial = FALSE,
-  nresamples = 100
+  maximise = FALSE
 )
 }
 \arguments{
@@ -38,8 +36,6 @@ characterising the serial interval distribution}
 
 \item{maximise}{rather than sample a case count give the case count with the
 maximum probability (by default is FALSE)}
-
-\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
 
 \item{nresamples}{number of importance resamples of Rt to perform if assuming a
 negative binomial model}

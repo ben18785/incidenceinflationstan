@@ -12,16 +12,18 @@ mcmc(
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
-  reporting_metropolis_parameters = list(mean_step = 0.25, sd_step = 0.1),
+  stan_model,
+  nchains = 1,
+  initial_overdispersion = 5,
+  initial_sigma = 5,
+  initial_metropolis_parameters = 1,
   serial_max = 40,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
   print_to_screen = TRUE,
-  nchains = 1,
-  is_parallel = FALSE,
-  initial_overdispersion = 5,
   is_negative_binomial = FALSE,
-  overdispersion_metropolis_sd = 0.25
+  is_gamma_delay = TRUE,
+  is_parallel = FALSE
 )
 }
 \arguments{
@@ -53,8 +55,10 @@ provided in the data frame).}
 \item{initial_Rt}{initial guess of the Rt values in each of the piecewise segments.
 Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'}
 
-\item{reporting_metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
-step sizes for Metropolis step}
+\item{nchains}{number of Markov chains to run. Defaults to 1}
+
+\item{initial_overdispersion}{the initial value of the overdispersion parameter if
+assuming a negative binomial sampling model (default to 5).}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
@@ -66,16 +70,10 @@ maximum probability (by default is FALSE)}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true. Disabled when is_parallel is TRUE.}
 
-\item{nchains}{number of Markov chains to run. Defaults to 1}
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 
 \item{is_parallel}{Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.}
-
-\item{initial_overdispersion}{the initial value of the overdispersion parameter if
-assuming a negative binomial sampling model (default to 5).}
-
-\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
-
-\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

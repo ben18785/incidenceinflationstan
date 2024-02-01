@@ -13,6 +13,7 @@ conditional_cases_logp(
   day_onset,
   serial_parameters,
   reporting_parameters,
+  is_gamma_delay,
   kappa = NULL,
   is_negative_binomial = FALSE
 )
@@ -32,8 +33,11 @@ recent to past}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 
 \item{kappa}{overdispersion parameter}
 

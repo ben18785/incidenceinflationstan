@@ -4,15 +4,18 @@
 \alias{undetected_prob}
 \title{Probability case remains undetected over time}
 \usage{
-undetected_prob(t_1, t_onset, reporting_parameters)
+undetected_prob(t_1, t_onset, reporting_parameters, is_gamma_delay)
 }
 \arguments{
 \item{t_1}{observation time subsequent to time when case originates: t1>=t0}
 
 \item{t_onset}{time when case originates}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 }
 \value{
 a probability
@@ -23,5 +26,5 @@ probability that an actual case originating on day t_onset
 remains unreported at t_1.
 }
 \examples{
-incidenceinflation:::undetected_prob(2, 1, list(mean=10, sd=5))
+incidenceinflation:::undetected_prob(2, 1, list(location=10, scale=5))
 }

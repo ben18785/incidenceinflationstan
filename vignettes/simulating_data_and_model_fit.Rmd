@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(incidenceinflation)
+library(incidenceinflationstan)
 library(ggplot2)
 library(magrittr)
 library(dplyr)
@@ -161,20 +161,13 @@ cases_history_df <- cases_history_df %>%
   select(time_onset, cases_true, Rt_index) %>% 
   unique()
 
-# Prior on each Rt segment value
-Rt_prior <- list(location=2, scale=3)
+# Gamma prior on each Rt segment value
+Rt_prior <- list(shape=2, rate=3)
 
-Rt_df_nb <- sample_Rt(cases_history_df,
-  Rt_prior, s_params,
-  ndraws = 1000,
-  serial_max = 20,
-  is_negative_binomial = TRUE,
-  kappa=10) %>% 
-  mutate(method="negative_binomial")
 Rt_df_po <- sample_Rt(cases_history_df,
   Rt_prior, s_params,
   ndraws = 1000,
-  serial_max = 20) %>% 
+  serial_max = 40) %>% 
   mutate(method="poisson")
 
 # graph posterior samples vs actual Rt values
@@ -198,7 +191,7 @@ snapshot_with_Rt_index_df <- df
 initial_cases_true <- df %>% 
   group_by(time_onset) %>% 
   summarise(cases_true=last(cases_reported))
-initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+# initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
 snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
 initial_Rt <- tribble(~Rt_index, ~Rt,
                       1, 1.0,
@@ -227,7 +220,7 @@ priors <- list(Rt=Rt_prior,
                max_cases=5000)
 
 
-stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
 options(cmdstanr_warn_inits = FALSE)

@@ -10,7 +10,8 @@ observed_cases_single(
   day_2,
   day_1,
   day_onset,
-  reporting_parameters
+  reporting_parameters,
+  is_gamma_delay
 )
 }
 \arguments{
@@ -25,8 +26,11 @@ day_1}
 
 \item{day_onset}{day when case originates}
 
-\item{reporting_parameters}{named list of 'mean' and 'sd' of gamma distribution
+\item{reporting_parameters}{named list of 'location' and 'scale' of distribution
 characterising the reporting delay distribution}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 }
 \value{
 a count representing number of cases reported between day_1 and day_2

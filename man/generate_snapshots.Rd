@@ -25,9 +25,9 @@ period)}
 \item{serial_parameters}{named list of 'mean' and 'sd' of gamma distribution
 characterising the serial interval distribution}
 
-\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
+\item{reporting_parameters}{either a named list of 'location' and 'scale' of gamma or lognormal
 distribution indicating a single reporting delay distribution for the whole period
-or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+or a tibble with columns: 'time_onset', 'location', 'scale' indicating the reporting
 delay distribution for each time period}
 
 \item{thinned}{a Boolean indicating whether to thin cases to only informative time points}
@@ -65,7 +65,7 @@ s_params <- list(mean=5, sd=1)
 kappa <- 2
 
 # reporting delays
-r_params <- list(mean=10, sd=5)
+r_params <- list(location=10, scale=5)
 reported_cases <- generate_snapshots(
     days_total, Rt_function,
     s_params, r_params)

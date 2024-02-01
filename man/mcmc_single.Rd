@@ -12,14 +12,16 @@ mcmc_single(
   initial_cases_true,
   initial_reporting_parameters,
   initial_Rt,
-  reporting_metropolis_parameters = list(mean_step = 0.25, sd_step = 0.1),
+  stan_model,
+  initial_overdispersion = NULL,
+  initial_sigma = NULL,
+  initial_metropolis_parameters = 1,
   serial_max = 40,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
   print_to_screen = TRUE,
-  initial_overdispersion = 5,
   is_negative_binomial = FALSE,
-  overdispersion_metropolis_sd = 0.5
+  is_gamma_delay = TRUE
 )
 }
 \arguments{
@@ -55,8 +57,8 @@ provided in the data frame).}
 \item{initial_Rt}{initial guess of the Rt values in each of the piecewise segments.
 Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'}
 
-\item{reporting_metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
-step sizes for Metropolis step}
+\item{initial_overdispersion}{the initial value of the overdispersion parameter if
+assuming a negative binomial sampling model (default to 5).}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
@@ -68,12 +70,11 @@ sample parameter values using MCMC (if false). By default this is false.}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true.}
 
-\item{initial_overdispersion}{the initial value of the overdispersion parameter if
-assuming a negative binomial sampling model (default to 5).}
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 
-\item{is_negative_binomial}{if negative-binomial renewal model specified (defaults to FALSE)}
-
-\item{overdispersion_metropolis_sd}{the standard deviation of the proposal kernel}
+\item{reporting_metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
+step sizes for Metropolis step}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" which contain estimates of the model parameters

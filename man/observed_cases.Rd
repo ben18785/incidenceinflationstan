@@ -4,14 +4,19 @@
 \alias{observed_cases}
 \title{Generate reported case trajectories for each day when cases appear}
 \usage{
-observed_cases(cases_true, reporting_parameters, days_max_follow_up = 30)
+observed_cases(
+  cases_true,
+  reporting_parameters,
+  is_gamma_delay = TRUE,
+  days_max_follow_up = 30
+)
 }
 \arguments{
 \item{cases_true}{a vector of true cases originating each day}
 
-\item{reporting_parameters}{either a named list of 'mean' and 'sd' of gamma
+\item{reporting_parameters}{either a named list of 'location' and 'scale' of gamma or lognormal
 distribution indicating a single reporting delay distribution for the whole period
-or a tibble with columns: 'time_onset', 'mean', 'sd' indicating the reporting
+or a tibble with columns: 'time_onset', 'location', 'scale' indicating the reporting
 delay distribution for each time period}
 
 \item{days_max_follow_up}{max days at which to simulate reporting case
@@ -25,5 +30,5 @@ Generate reported case trajectories for each day when cases appear
 }
 \examples{
 library(incidenceinflation)
-observed_cases(stats::rpois(5, 5), list(mean=5, sd=1))
+observed_cases(stats::rpois(5, 5), list(location=5, scale=1))
 }
