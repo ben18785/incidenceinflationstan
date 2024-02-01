@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(incidenceinflation)
+library(incidenceinflationstan)
 library(ggplot2)
 library(magrittr)
 library(dplyr)

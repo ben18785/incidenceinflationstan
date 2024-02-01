@@ -253,7 +253,7 @@ new_init_Rt <- res$Rt %>%
   group_by(Rt_index) %>% 
   summarise(Rt=last(Rt))
 test <- mcmc_single(
-  300,
+  100,
   snapshot_with_Rt_index_df,
   priors,
   s_params,
@@ -262,7 +262,8 @@ test <- mcmc_single(
   initial_Rt=new_init_Rt,
   stan_model,
   initial_overdispersion = initial_overdispersion,
-  is_negative_binomial = TRUE
+  is_negative_binomial = TRUE,
+  initial_sigma=1
 )
 res <- test
 b <- test$Rt
