@@ -852,11 +852,11 @@ mcmc_single <- function(
 #' Combines Markov chains across multiple runs of mcmc_single
 #'
 #' @param list_of_results a list of results, where each element is a result of running mcmc_single
-#' @inheritParams mcmc_single
+#' @param is_either_nb_or_sigma Boolean indicating whether model is negative binomial or includes sigma parameter
 #' @return a named list of three tibbles: "cases", "Rt" and "reporting" (and if running
 #' a negative binomial model an additional 'overdispersion' element) which
 #' contain estimates of the model parameters with chain index  included
-combine_chains <- function(list_of_results, is_negative_binomial=FALSE) {
+combine_chains <- function(list_of_results, is_either_nb_or_sigma=FALSE) {
 
   for(i in seq_along(list_of_results)) {
     res <- list_of_results[[i]]
@@ -867,24 +867,27 @@ combine_chains <- function(list_of_results, is_negative_binomial=FALSE) {
     Rt_df$chain <- i
     reporting_df$chain <- i
 
-    if(is_negative_binomial) {
-      overdispersion_df <- res$overdispersion
-      overdispersion_df$chain <- i
+    if(is_either_nb_or_sigma) {
+      other_df <- res$other
+      other_df$chain <- i
     }
+
     if(i == 1) {
       cases_overall <- cases_df
       Rt_overall <- Rt_df
       reporting_overall <- reporting_df
-      if(is_negative_binomial) {
-        overdispersion_overall <- overdispersion_df
+      if(is_either_nb_or_sigma) {
+        other_overall <- other_df
       }
     } else {
       cases_overall <- cases_overall %>% dplyr::bind_rows(cases_df)
       Rt_overall <- Rt_overall %>% dplyr::bind_rows(Rt_df)
       reporting_overall <- reporting_overall %>% dplyr::bind_rows(reporting_df)
-      if(is_negative_binomial) {
-        overdispersion_overall <- overdispersion_overall %>% dplyr::bind_rows(overdispersion_df)
+
+      if(is_either_nb_or_sigma) {
+        other_overall <- other_overall %>% dplyr::bind_rows(other_df)
       }
+
     }
   }
   list_combined <- list(
@@ -894,7 +897,7 @@ combine_chains <- function(list_of_results, is_negative_binomial=FALSE) {
   )
 
   if(is_negative_binomial)
-    list_combined$overdispersion <- overdispersion_overall
+    list_combined$other <- other_overall
 
   list_combined
 }
@@ -930,13 +933,16 @@ mcmc <- function(
     initial_Rt,
     stan_model,
     nchains=1,
-    initial_overdispersion=5,
-    initial_sigma=5,
-    initial_metropolis_parameters=1.0,
+    initial_overdispersion=NULL,
+    initial_sigma=NULL,
+    is_negative_binomial=FALSE,
+    is_gamma_delay=TRUE,
     serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
     is_negative_binomial=FALSE,
     is_gamma_delay=TRUE,
     is_parallel=FALSE) {
+
+  is_either_nb_or_sigma <- is_negative_binomial | !is.null(initial_sigma)
 
   if(nchains==1) {
     res <- mcmc_single(niterations,
@@ -949,7 +955,8 @@ mcmc <- function(
                        stan_model,
                        initial_overdispersion,
                        initial_sigma,
-                       initial_metropolis_parameters,
+                       is_negative_binomia,
+                       is_gamma_delay,
                        serial_max,
                        p_gamma_cutoff,
                        maximise,
@@ -959,8 +966,8 @@ mcmc <- function(
     res$cases$chain <- 1
     res$Rt$chain <- 1
     res$reporting$chain <- 1
-    if(is_negative_binomial)
-      res$overdispersion$chain <- 1
+    if(is_either_nb_or_sigma)
+      res$other$chain <- 1
   } else {
 
     list_of_results <- vector(mode = "list", length = nchains)
@@ -979,7 +986,8 @@ mcmc <- function(
                       stan_model,
                       initial_overdispersion,
                       initial_sigma,
-                      initial_metropolis_parameters,
+                      is_negative_binomia,
+                      is_gamma_delay,
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
@@ -1012,7 +1020,8 @@ mcmc <- function(
                            stan_model,
                            initial_overdispersion,
                            initial_sigma,
-                           initial_metropolis_parameters,
+                           is_negative_binomia,
+                           is_gamma_delay,
                            serial_max,
                            p_gamma_cutoff,
                            maximise,
@@ -1023,7 +1032,7 @@ mcmc <- function(
       }
     }
 
-    res <- combine_chains(list_of_results, is_negative_binomial)
+    res <- combine_chains(list_of_results, is_either_nb_or_sigma)
   }
 
   res
