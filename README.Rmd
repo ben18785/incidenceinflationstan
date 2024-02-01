@@ -13,20 +13,20 @@ knitr::opts_chunk$set(
 )
 ```
 
-# incidenceinflation
+# incidenceinflationstan
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/ben18785/incidenceinflation/workflows/R-CMD-check/badge.svg)](https://github.com/ben18785/incidenceinflation/actions)
 <!-- badges: end -->
 
-The goal of incidenceinflation is to estimate R0 and true incidence given reporting delays.
+The goal of incidenceinflationstan is to estimate R0 and true incidence given reporting delays.
 
 ## Installation
 
 You can install the released version of incidenceinflation from [CRAN](https://CRAN.R-project.org) with:
 
 ``` r
-devtools::install_github(ben18785/incidenceinflation)
+devtools::install_github(ben18785/incidenceinflationstan)
 ```
 
 ## Example
@@ -34,7 +34,7 @@ devtools::install_github(ben18785/incidenceinflation)
 Generate simulated data
 
 ```{r example}
-library(incidenceinflation)
+library(incidenceinflationstan)
 ## basic example code
 ```
 
