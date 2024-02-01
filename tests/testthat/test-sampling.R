@@ -1,7 +1,7 @@
 test_that("sample_true_cases_single_onset produces reasonable case draws", {
   observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
                                       cases_reported=c(1, 1, 1))
-  reporting_parameters <- list(mean=5, sd=3)
+  reporting_parameters <- list(location=5, scale=3)
   max_cases <- 100
   s_params <- list(mean=10, sd=1)
   Rt <- 2
@@ -21,7 +21,7 @@ test_that("sample_true_cases_single_onset produces reasonable case draws", {
   expect_true(case <= max_cases)
 
   # when reporting mean is low, expect to have pretty much seen all cases
-  reporting_parameters <- list(mean=1, sd=1)
+  reporting_parameters <- list(location=1, scale=1)
   cases <- sample_true_cases_single_onset(observation_df=observation_matrix,
                             cases_history=cases_history,
                             max_cases=max_cases,
@@ -78,7 +78,7 @@ test_that("sample_true_cases_single_onset produces reasonable case draws", {
 test_that("sample_true_cases_single_onset produces consistent maximum", {
   observation_matrix <- dplyr::tibble(time_reported=c(1, 3, 5),
                                       cases_reported=c(1, 1, 1))
-  reporting_parameters <- list(mean=5, sd=3)
+  reporting_parameters <- list(location=5, scale=3)
   max_cases <- 100
   s_params <- list(mean=10, sd=1)
   Rt <- 2
@@ -88,7 +88,8 @@ test_that("sample_true_cases_single_onset produces consistent maximum", {
   max_observed_cases <- max(observation_matrix$cases_reported)
   possible_cases <- max_observed_cases:max_cases
   logps <- conditional_cases_logp(possible_cases, observation_matrix, cases_history,
-                                  Rt, day_onset, s_params, reporting_parameters)
+                                  Rt, day_onset, s_params, reporting_parameters,
+                                  is_gamma_delay = TRUE)
 
   map_val <- possible_cases[which.max(logps)]
   case <- sample_true_cases_single_onset(
@@ -104,19 +105,19 @@ test_that("sample_true_cases_single_onset produces consistent maximum", {
 })
 
 test_that("max_uncertain_days selects reasonable gamma distribution quanties", {
-  r_params <- list(mean=7, sd=0.01)
-  expect_equal(round(max_uncertain_days(0.5, r_params)), 7)
-  expect_true(max_uncertain_days(0.95, r_params) > 7)
+  r_params <- list(location=7, scale=0.01)
+  expect_equal(round(max_uncertain_days(0.5, r_params, is_gamma_delay = TRUE)), 7)
+  expect_true(max_uncertain_days(0.95, r_params, is_gamma_delay = TRUE) > 7)
 
-  r_params <- list(mean=7, sd=5)
-  expect_true(max_uncertain_days(0.95, r_params) > 10)
-  expect_equal(max_uncertain_days(0, r_params), 0)
+  r_params <- list(location=7, scale=5)
+  expect_true(max_uncertain_days(0.95, r_params, is_gamma_delay = TRUE) > 10)
+  expect_equal(max_uncertain_days(0, r_params, is_gamma_delay = TRUE), 0)
 })
 
 test_that("sample_cases_history adds cases_estimated that look reasonable", {
   days_total <- 100
   kappa <- 1000
-  r_params <- list(mean=10, sd=3)
+  r_params <- list(location=10, scale=3)
   v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
   s_params <- list(mean=5, sd=3)
@@ -125,7 +126,7 @@ test_that("sample_cases_history adds cases_estimated that look reasonable", {
                            kappa=kappa, thinned=T) %>%
     dplyr::mutate(reporting_piece_index=1)
   max_cases <- 5000
-  r_params <- dplyr::tibble(mean=10, sd=3, reporting_piece_index=1)
+  r_params <- dplyr::tibble(location=10, scale=3, reporting_piece_index=1)
   df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params)
   expect_true(all.equal(df_est %>% dplyr::select(-cases_estimated),
                         df))
@@ -154,7 +155,7 @@ test_that("sample_cases_history yields a single case history when
 maximising", {
   days_total <- 30
   kappa <- 1000
-  r_params <- list(mean=10, sd=3)
+  r_params <- list(location=10, scale=3)
   v_Rt <- c(rep(1.5, 10), rep(0.4, 10), rep(1.5, 10))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
   s_params <- list(mean=5, sd=3)
@@ -165,8 +166,8 @@ maximising", {
   max_cases <- 5000
   r_params <- dplyr::tibble(
     reporting_piece_index=1,
-    mean=r_params$mean,
-    sd=r_params$sd
+    location=r_params$location,
+    scale=r_params$scale
   )
   f_est <- function(i) {
     df_est <- sample_cases_history(df, max_cases, Rt_function,
@@ -205,7 +206,7 @@ Rt_3 <- 1.3
 v_Rt <- c(rep(Rt_1, 40), rep(Rt_2, 20), rep(Rt_3, 40))
 Rt_function <- stats::approxfun(1:days_total, v_Rt)
 s_params <- list(mean=5, sd=3)
-r_params <- list(mean=10, sd=3)
+r_params <- list(location=10, scale=3)
 kappa <- 1000
 df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                          kappa=kappa) %>%
@@ -270,38 +271,6 @@ test_that("sample_Rt_single_piece returns reasonable values: these are
   expect_true(abs(mode(Rt_vals) - Rt_vals[1]) < 0.2)
 })
 
-test_that("sample_Rt_single_piece works ok with NB renewal model", {
-  ndraws <- 420
-  Rt_vals <- sample_Rt_single_piece(
-    2, df,
-    Rt_prior, s_params,
-    ndraws = ndraws,
-    serial_max = 20)
-
-  # for large kappa draws should be similar
-  kappa <- 10000
-  Rt_vals_nb <- sample_Rt_single_piece(
-    2, df,
-    Rt_prior, s_params,
-    ndraws = ndraws,
-    serial_max = 20,
-    kappa=kappa,
-    is_negative_binomial=TRUE)
-  expect_true(abs(mean(Rt_vals_nb) - mean(Rt_vals)) < 0.5)
-  expect_true(abs(sd(Rt_vals_nb) - sd(Rt_vals)) < 0.1)
-
-  # for small kappa the NB sd should exceed Poisson
-  kappa <- 0.5
-  Rt_vals_nb <- sample_Rt_single_piece(
-    2, df,
-    Rt_prior, s_params,
-    ndraws = ndraws,
-    serial_max = 20,
-    kappa=kappa,
-    is_negative_binomial=TRUE)
-  expect_true(sd(Rt_vals_nb) > sd(Rt_vals))
-})
-
 test_that("sample_Rt returns sensible values", {
   ndraws <- 300
   Rt_df <- sample_Rt(df,
@@ -361,272 +330,25 @@ test_that("sample_Rt returns sensible values", {
   expect_true(abs(sum(Rt_df$diff)) < 0.0001)
 })
 
-test_that("sample_Rt works for negative binomial renewal model", {
-
-  ndraws <- 300
-  Rt_df <- sample_Rt(df,
-                     Rt_prior, s_params,
-                     ndraws = ndraws,
-                     serial_max = 20)
-
-  Rt_df_nb <- sample_Rt(df,
-                     Rt_prior, s_params,
-                     ndraws = ndraws,
-                     serial_max = 20,
-                     kappa=1,
-                     is_negative_binomial=TRUE)
-  expect_equal(nrow(Rt_df), nrow(Rt_df_nb))
-  expect_equal(ncol(Rt_df), ncol(Rt_df_nb))
-
-  # errors thrown if not providing kappa
-  expect_error(sample_Rt(df,
-                         Rt_prior, s_params,
-                         ndraws = ndraws,
-                         serial_max = 20,
-                         is_negative_binomial=TRUE))
-
-  # errors thrown if providing invalid kappa
-  expect_error(sample_Rt(df,
-                         Rt_prior, s_params,
-                         ndraws = ndraws,
-                         serial_max = 20,
-                         kappa=0,
-                         is_negative_binomial=TRUE))
-})
-
-test_that("accept_reject works ok", {
-
-  logp_current <- 0
-  logp_proposed <- -10000
-  current_parameters <- 0
-  proposed_parameters <- 1
-  list_param_logp <- accept_reject(logp_current, logp_proposed,
-    current_parameters,
-    proposed_parameters)
-  expect_equal(current_parameters, list_param_logp$parameter)
-  expect_equal(logp_current, list_param_logp$logp)
-})
-
-test_that("prior_reporting_parameters works ok", {
-  current_reporting_parameters <- list(mean=3, sd=2, reporting_piece_index=1)
-  prior_params <- list(mean_mu=3, mean_sigma=2,
-                       sd_mu=5, sd_sigma=1)
-  val <- prior_reporting_parameters(current_reporting_parameters,
-                                    prior_params)
-  val1 <- dgamma_mean_sd(current_reporting_parameters$mean,
-                         prior_params$mean_mu,
-                         prior_params$mean_sigma,
-                         log=TRUE)
-  val2 <- dgamma_mean_sd(current_reporting_parameters$sd,
-                         prior_params$sd_mu,
-                         prior_params$sd_sigma,
-                         log=TRUE)
-  expect_equal(val, val1 + val2)
-})
-
-test_that("propose_reporting_parameters works ok", {
-  r_params <- dplyr::tibble(mean=4, sd=4, reporting_piece_index=1)
-  met_params <- list(mean_step=0.1, sd_step=0.2)
-  r_params1 <- propose_reporting_parameters(
-    r_params, met_params)
-  expect_true(abs(r_params$mean - r_params1$mean) < 3)
-  expect_true(abs(r_params$sd - r_params1$sd) < 3)
-
-  met_params <- list(mean_step=0.000001, sd_step=0.2)
-  r_params1 <- propose_reporting_parameters(
-    r_params, met_params)
-  expect_true(abs(r_params$mean - r_params1$mean) < 0.1)
-})
-
 days_total <- 30
 df <- generate_snapshots(days_total, Rt_function,
                          s_params, r_params,
                          kappa=kappa, thinned=T) %>%
   dplyr::mutate(reporting_piece_index=1)
-
-test_that("metropolis_step works as expected", {
-  met_params <- list(mean_step=0.01, sd_step=0.01)
-  prior_params <- list(mean_mu=2, mean_sigma=100,
-                       sd_mu=2, sd_sigma=100)
-  r_params <- dplyr::tibble(mean=r_params$mean,
-                     sd=r_params$sd,
-                     reporting_piece_index=1)
-  logp_current <- -1000
-  list_param_logp <- metropolis_step(
-    df, r_params, logp_current,
-    prior_params, met_params)
-  r_params1 <- list_param_logp$parameter
-  expect_true(abs(r_params1$mean - r_params$mean) < 0.2)
-  expect_true(abs(r_params1$sd - r_params$sd) < 0.2)
-})
-
-test_that("metropolis_steps returns multiple steps", {
-
-  met_params <- list(mean_step=0.01, sd_step=0.01)
-  ndraws <- 10
-  rep_prior_params <- list(mean_mu=5, sd_mu=3,
-                           mean_sigma=5, sd_sigma=3)
-  r_params <- dplyr::tibble(mean=r_params$mean,
-                     sd=r_params$sd,
-                     reporting_piece_index=1)
-  logp_current <- -1000
-  list_draws_logp <- metropolis_steps(
-    snapshot_with_true_cases_df=df,
-    current_reporting_parameters=r_params,
-    logp_current=logp_current,
-    prior_parameters=rep_prior_params,
-    metropolis_parameters=met_params,
-    ndraws=ndraws)
-  expect_equal(names(list_draws_logp)[2], "logp")
-  output <- list_draws_logp$reporting_parameters
-  expect_equal(nrow(output), ndraws)
-  expect_true(all.equal(colnames(output),
-                        c("reporting_piece_index", "draw_index", "mean", "sd")))
-})
-
-test_that("propose_overdispersion_parameter works ok", {
-  current <- 0
-  sd <- 2
-  new <- propose_overdispersion_parameter(current, sd)
-  expect_true(current != new)
-})
-
-test_that("metropolis_step_overdispersion works ok", {
-
-  overdispersion_current <- 100
-  logp_current <- -100000
-  cases_history_rt_df <- df %>%
-    dplyr::select("time_onset", "cases_true") %>%
-    unique() %>%
-    dplyr::mutate(Rt=2)
-
-  list_param_logp <- metropolis_step_overdispersion(
-    overdispersion_current,
-    logp_current,
-    cases_history_rt_df,
-    serial_parameters=list(mean=2, sd=3),
-    prior_overdispersion_parameter=list(mean=10, sd=100),
-    overdispersion_metropolis_sd=1)
-  expect_true(list_param_logp$overdispersion != overdispersion_current)
-  expect_true(list_param_logp$logp > logp_current)
-})
-
-test_that("maximise_reporting_logp maximises prob", {
-  prior_params <- list(mean_mu=2, mean_sigma=100,
-                       sd_mu=2, sd_sigma=100)
-  r_params <- dplyr::tibble(reporting_piece_index=1,
-                            mean=r_params$mean,
-                            sd=r_params$sd)
-  df <- df %>%
-    dplyr::mutate(reporting_piece_index=1)
-  output <- maximise_reporting_logp(df, r_params, prior_params)
-  expect_true(abs(output$mean - r_params$mean) < 0.4)
-  expect_true(abs(output$sd - r_params$sd) < 0.4)
-  expect_equal(nrow(output), 1)
-})
-
-test_that("maximise_reporting_logp throws errors with piece info missing", {
-
-  df <- df %>%
-    dplyr::select(-"reporting_piece_index")
-  prior_params <- list(mean_mu=2, mean_sigma=100,
-                       sd_mu=2, sd_sigma=100)
-
-  # r_params doesn't contain reporting_piece_index
-  df_temp <- df %>%
-    dplyr::mutate(reporting_piece_index=1)
-  expect_error(maximise_reporting_logp(df_temp, r_params, prior_params))
-
-  # df doesn't contain reporting_piece_index
-  r_params <- dplyr::tibble(reporting_piece_index=1,
-                            mean=r_params$mean,
-                            sd=r_params$sd)
-  expect_error(maximise_reporting_logp(df, r_params, prior_params))
-
-})
-
-test_that("maximise_reporting_logp works ok with multiple pieces", {
-
-  days_total <- 30
-  r_params <- dplyr::tibble(mean=c(rep(10, 15), rep(3, 15)),
-                     sd=c(rep(3, 15), rep(1, 15)),
-                     time_onset=seq_along(mean)) %>%
-    dplyr::mutate(reporting_piece_index=c(rep(1, 15), rep(2, 15)))
-  df <- generate_snapshots(days_total, Rt_function,
-                           s_params, r_params,
-                           kappa=kappa, thinned=T)
-  r_params_short <- r_params %>%
-    dplyr::select(time_onset, reporting_piece_index) %>%
-    unique()
-
-  df <- df %>%
-    dplyr::left_join(r_params_short, by="time_onset")
-  r_params <- dplyr::tibble(reporting_piece_index=c(1, 2),
-                     mean=c(8, 4),
-                     sd=c(4, 2))
-  prior_params <- list(mean_mu=2, mean_sigma=100,
-                       sd_mu=2, sd_sigma=100)
-  output <- maximise_reporting_logp(df, r_params, prior_params)
-
-  # try optimisation on each subperiod: should yield same
-  r_params_1 <- r_params %>%
-    dplyr::filter(reporting_piece_index==1)
-  df_1 <- df %>%
-    dplyr::filter(reporting_piece_index==1)
-  output_1 <- maximise_reporting_logp(df_1, r_params_1, prior_params)
-  r_params_2 <- r_params %>%
-    dplyr::filter(reporting_piece_index==2)
-  df_2 <- df %>%
-    dplyr::filter(reporting_piece_index==2)
-  output_2 <- maximise_reporting_logp(df_2, r_params_2, prior_params)
-
-  expect_equal(output$mean[1], output_1$mean[1])
-  expect_equal(output$mean[2], output_2$mean[1])
-  expect_equal(output$sd[1], output_1$sd[1])
-  expect_equal(output$sd[2], output_2$sd[1])
-  expect_equal(output$reporting_piece_index[1], output_1$reporting_piece_index[1])
-  expect_equal(output$reporting_piece_index[2], output_2$reporting_piece_index[1])
-})
-
-test_that("sample_reporting produces output of correct shape", {
-
-  prior_params <- list(mean_mu=2, mean_sigma=100,
-                       sd_mu=2, sd_sigma=100)
-  met_params <- list(mean_step=0.01, sd_step=0.01)
-  r_params <- dplyr::tibble(mean=r_params$mean,
-                     sd=r_params$sd,
-                     reporting_piece_index=1)
-  logp_current <- -1000
-  result <- sample_reporting(df, r_params, logp_current, prior_params, met_params)
-  expect_equal(names(result)[2], "logp")
-  output <- result$reporting_parameters
-  expect_equal(nrow(output), 1)
-  expect_equal(max(output$draw_index), 1)
-
-  ndraws <- 2
-  result <- sample_reporting(df, r_params, logp_current, prior_params, met_params,
-                             ndraws=ndraws)
-  output <- result$reporting_parameters
-  expect_equal(nrow(output), ndraws)
-  expect_equal(max(output$draw_index), ndraws)
-
-  result <- sample_reporting(df, r_params, logp_current, prior_params, met_params,
-                             maximise=T)
-  output <- result$reporting_parameters
-  expect_equal(nrow(output), 1)
-  expect_equal(max(output$draw_index), 1)
-})
+stan_model <- cmdstanr::cmdstan_model("../../src/stan/conditional_renewal.stan",
+                                      compile_model_methods=TRUE,
+                                      force_recompile=TRUE)
 
 
 test_that("mcmc produces outputs of correct shape", {
 
   niter <- 2
   days_total <- 100
-  r_params <- list(mean=10, sd=3)
+  r_params <- list(location=10, scale=3)
   s_params <- list(mean=5, sd=3)
   v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
-  Rt_prior <- list(shape=1, rate=1)
+  Rt_prior <- list(location=1, scale=1, is_gamma=TRUE)
   kappa <- 10
   df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                            kappa=kappa)
@@ -652,7 +374,7 @@ test_that("mcmc produces outputs of correct shape", {
     dplyr::left_join(Rt_index_lookup, by="time_onset") %>%
     dplyr::mutate(reporting_piece_index=1)
 
-  initial_reporting_parameters <- dplyr::tibble(mean=5, sd=3, reporting_piece_index=1)
+  initial_reporting_parameters <- dplyr::tibble(location=5, scale=3, reporting_piece_index=1)
   serial_parameters <- list(mean=5, sd=3)
   priors <- list(Rt=Rt_prior,
                  reporting=list(mean_mu=5,
@@ -672,8 +394,8 @@ test_that("mcmc produces outputs of correct shape", {
                     initial_cases_true,
                     initial_reporting_parameters,
                     initial_Rt,
-                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+                    stan_model),
+               "Incorrect column names in snapshot_with_Rt_index_df")
 
   ## too many cols
   wrong_df <- snapshot_with_Rt_index_df %>%
@@ -685,8 +407,8 @@ test_that("mcmc produces outputs of correct shape", {
                     initial_cases_true,
                     initial_reporting_parameters,
                     initial_Rt,
-                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+                    stan_model),
+               "There should be either four or five columns in snapshot_with_Rt_index_df")
 
   # five columns but not reporting_piece_index
   wrong_df <- snapshot_with_Rt_index_df %>%
@@ -698,47 +420,31 @@ test_that("mcmc produces outputs of correct shape", {
                     initial_cases_true,
                     initial_reporting_parameters,
                     initial_Rt,
-                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-                    serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE))
+                    stan_model),
+               "The reporting delay indices must be provided through a column named 'reporting_piece_index'")
 
   # overdispersion parameter <= 0
-  expect_error(mcmc(niterations=niter,
-                   snapshot_with_Rt_index_df,
-                   priors,
-                   serial_parameters,
-                   initial_cases_true,
-                   initial_reporting_parameters,
-                   initial_Rt,
-                   reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-                   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-                   initial_overdispersion = -1))
-
-  # maximisation with a NB model doesn't work
-  priors_tmp <- priors
-  priors_tmp$overdispersion <- list(mean=5, sd=10)
-  expect_error(mcmc(niterations=niter,
+  expect_error(mcmc(niter,
                     snapshot_with_Rt_index_df,
-                    priors_tmp,
+                    priors,
                     serial_parameters,
                     initial_cases_true,
                     initial_reporting_parameters,
                     initial_Rt,
-                    reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-                    serial_max=40, p_gamma_cutoff=0.99, maximise=TRUE,
-                    is_negative_binomial=TRUE))
-
+                    stan_model,
+                    is_negative_binomial = TRUE,
+                    initial_overdispersion = -1))
 
   # test MCMC sampling
   niter <- 5
-  res <- mcmc(niterations=niter,
+  res <- mcmc(niter,
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+              stan_model)
 
   ## check outputs
   ### overall
@@ -768,7 +474,7 @@ test_that("mcmc produces outputs of correct shape", {
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("reporting_piece_index", "mean", "sd", "iteration", "chain"),
+  expect_true(all.equal(c("reporting_piece_index", "location", "scale", "iteration", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
@@ -784,8 +490,8 @@ test_that("mcmc produces outputs of correct shape", {
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=TRUE)
+              stan_model,
+              maximise=TRUE)
   ### overall
   expect_equal(length(res), 3)
 
@@ -813,7 +519,7 @@ test_that("mcmc produces outputs of correct shape", {
 
   # reporting delays
   reporting_df <- res$reporting
-  expect_true(all.equal(c("reporting_piece_index", "mean", "sd", "iteration", "chain"),
+  expect_true(all.equal(c("reporting_piece_index", "location", "scale", "iteration", "chain"),
                         colnames(reporting_df)))
   expect_equal(min(reporting_df$iteration), 1)
   expect_equal(max(reporting_df$iteration), niter)
@@ -824,46 +530,35 @@ test_that("mcmc produces outputs of correct shape", {
   # test MCMC sampling with NB model
   niter <- 5
 
-  ## prior not provided on overdispersion parameter
-  expect_error(mcmc(niterations=niter,
-              snapshot_with_Rt_index_df,
-              priors,
-              serial_parameters,
-              initial_cases_true,
-              initial_reporting_parameters,
-              initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-              is_negative_binomial=TRUE))
 
   # sampling works if given overdispersion prior
-  priors$overdispersion <- list(mean=5, sd=2)
-  res <- mcmc(niterations=niter,
+  priors$overdispersion <- list(location=0, scale=2)
+  res <- mcmc(niter,
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-              is_negative_binomial=TRUE)
+              stan_model,
+              is_negative_binomial=TRUE,
+              initial_overdispersion = 5)
   expect_equal(length(res), 4)
-  expect_true("overdispersion" %in% names(res))
-  overdispersion <- res$overdispersion
-  expect_equal(nrow(overdispersion), 5)
-  expect_true("overdispersion" %in% names(overdispersion))
-  expect_true("iteration" %in% names(overdispersion))
+  expect_true("other" %in% names(res))
+  other <- res$other
+  expect_equal(nrow(other), 5)
+  expect_true("overdispersion" %in% names(other))
+  expect_true("iteration" %in% names(other))
 })
 
 test_that("multiple chains works", {
 
   days_total <- 100
-  r_params <- list(mean=10, sd=3)
+  r_params <- list(location=10, scale=3)
   s_params <- list(mean=5, sd=3)
   v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
   Rt_function <- stats::approxfun(1:days_total, v_Rt)
-  Rt_prior <- list(shape=1, rate=1)
+  Rt_prior <- list(location=1, scale=1, is_gamma=TRUE)
   kappa <- 10
   df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
                            kappa=kappa)
@@ -888,7 +583,7 @@ test_that("multiple chains works", {
   snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
     dplyr::left_join(Rt_index_lookup)
 
-  initial_reporting_parameters <- list(mean=5, sd=3)
+  initial_reporting_parameters <- list(location=5, scale=3)
   serial_parameters <- list(mean=5, sd=3)
   priors <- list(Rt=Rt_prior,
                  reporting=list(mean_mu=5,
@@ -900,15 +595,14 @@ test_that("multiple chains works", {
   # multiple chains in serial
   niter <- 2
   nchains <- 2
-  res <- mcmc(niterations=niter,
+  res <- mcmc(niter,
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+              stan_model,
               nchains=nchains)
   cases_df <- res$cases
   Rt_df <- res$Rt
@@ -919,15 +613,14 @@ test_that("multiple chains works", {
   expect_equal(max(rep_df$chain), nchains)
 
   nchains <- 3
-  res <- mcmc(niterations=niter,
+  res <- mcmc(niter,
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+              stan_model,
               nchains=nchains)
   cases_df <- res$cases
   Rt_df <- res$Rt
@@ -937,163 +630,71 @@ test_that("multiple chains works", {
   expect_equal(max(Rt_df$chain), nchains)
   expect_equal(max(rep_df$chain), nchains)
 
-  # multiple chains in parallel
-  library(doParallel)
-  cl <- makeCluster(2)
-  registerDoParallel(cl)
-  res <- mcmc(niterations=niter,
+
+  # negative binomial model
+  res <- mcmc(niter,
               snapshot_with_Rt_index_df,
               priors,
               serial_parameters,
               initial_cases_true,
               initial_reporting_parameters,
               initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-              nchains=nchains, is_parallel=TRUE, is_negative_binomial=FALSE)
-  stopCluster(cl)
-
-  expect_equal(max(cases_df$chain), nchains)
-  expect_equal(max(Rt_df$chain), nchains)
-  expect_equal(max(rep_df$chain), nchains)
-
-  # multiple chains in parallel using NB model
-  cl <- makeCluster(2)
-  registerDoParallel(cl)
-  priors$overdispersion <- list(mean=5, sd=10)
-  res <- mcmc(niterations=niter,
-              snapshot_with_Rt_index_df,
-              priors,
-              serial_parameters,
-              initial_cases_true,
-              initial_reporting_parameters,
-              initial_Rt,
-              reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
-              serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
-              nchains=nchains, is_parallel=TRUE, is_negative_binomial=TRUE)
-  stopCluster(cl)
-
+              stan_model,
+              is_negative_binomial = TRUE,
+              initial_overdispersion = 10,
+              nchains=nchains)
   cases_df <- res$cases
   Rt_df <- res$Rt
   rep_df <- res$reporting
-  overdispersion_df <- res$overdispersion
+  other_df <- res$other
 
   expect_equal(max(cases_df$chain), nchains)
   expect_equal(max(Rt_df$chain), nchains)
   expect_equal(max(rep_df$chain), nchains)
-  expect_equal(max(overdispersion_df$chain), nchains)
-})
+  expect_equal(max(other_df$chain), nchains)
 
-test_that("construct_w_matrix works ok", {
-  w <- c(0.5, 0.25, 0.25)
-  piece_width <- 5
-  m_w <- construct_w_matrix(w, piece_width)
+  # negative binomial model and RW prior on Rt
+  priors$Rt$is_gamma <- FALSE
+  res <- mcmc(niter,
+              snapshot_with_Rt_index_df,
+              priors,
+              serial_parameters,
+              initial_cases_true,
+              initial_reporting_parameters,
+              initial_Rt,
+              stan_model,
+              is_negative_binomial = TRUE,
+              initial_overdispersion = 10,
+              initial_sigma = 10,
+              nchains=nchains)
+  cases_df <- res$cases
+  Rt_df <- res$Rt
+  rep_df <- res$reporting
+  other_df <- res$other
 
-  wmax <- length(w)
-  expect_equal(nrow(m_w), piece_width)
-  expect_equal(ncol(m_w), wmax + piece_width - 1)
+  expect_equal(max(cases_df$chain), nchains)
+  expect_equal(max(Rt_df$chain), nchains)
+  expect_equal(max(rep_df$chain), nchains)
+  expect_equal(max(other_df$chain), nchains)
 
-  row_sums <- rowSums(m_w)
-  expect_true(sum(row_sums==1) == piece_width)
-})
+  # multiple chains in parallel: TODO but waiting on cmdstanr changes
+  # library(doParallel)
+  # cl <- makeCluster(2)
+  # registerDoParallel(cl)
+  # res <- mcmc(niterations=niter,
+  #             snapshot_with_Rt_index_df,
+  #             priors,
+  #             serial_parameters,
+  #             initial_cases_true,
+  #             initial_reporting_parameters,
+  #             initial_Rt,
+  #             reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+  #             serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+  #             nchains=nchains, is_parallel=TRUE, is_negative_binomial=FALSE)
+  # stopCluster(cl)
+  #
+  # expect_equal(max(cases_df$chain), nchains)
+  # expect_equal(max(Rt_df$chain), nchains)
+  # expect_equal(max(rep_df$chain), nchains)
 
-test_that("nb_log_likelihood_Rt_piece works as expected", {
-
-  w <- c(0.5, 0.25, 0.25)
-  Rt <- 2.2
-  kappa <- 3.5
-  onset_times <- c(4, 5)
-  cases_df <- dplyr::tribble(
-    ~time_onset, ~cases_true,
-    1, 1,
-    2, 3,
-    3, 6,
-    4, 5,
-    5, 3
-  )
-
-  # check throws error if cases_df doesn't have onset times at bottom
-  cases_df_wrong <- cases_df %>%
-    dplyr::arrange(desc(time_onset))
-  expect_error(nb_log_likelihood_Rt_piece(
-    Rt, kappa, w, onset_times, cases_df_wrong)
-  )
-
-  # check works out logp pointwise
-  logp <- nb_log_likelihood_Rt_piece(
-    Rt, kappa, w, onset_times, cases_df
-  )
-  mu <- sum(Rt * w * rev(cases_df$cases_true[1:3]))
-  logp_1 <- dnbinom(cases_df$cases_true[4], mu=mu, size=kappa,
-                    log = TRUE)
-  mu <- sum(Rt * w * rev(cases_df$cases_true[2:4]))
-  logp_2 <- dnbinom(cases_df$cases_true[5], mu=mu, size=kappa,
-                    log = TRUE)
-  expect_equal(logp_1 + logp_2, logp)
-
-  # check onset_time 1 contributes no logp
-  onset_times <- c(1, 2)
-  cases_df <- cases_df %>%
-    dplyr::filter(time_onset %in% onset_times)
-  logp <- nb_log_likelihood_Rt_piece(
-    Rt, kappa, w, onset_times, cases_df
-  )
-  mu <- sum(Rt * w * c(cases_df$cases_true[1], 0, 0))
-  logp_2 <- dnbinom(cases_df$cases_true[2], mu=mu, size=kappa,
-                    log = TRUE)
-  expect_equal(logp, logp_2)
-
-})
-
-test_that("sample_nb_Rt_piece works as expected", {
-
-  prior_shape <- 1
-  prior_rate <- 0.2
-
-  w <- c(0.5, 0.25, 0.25)
-  onset_times <- c(4, 5)
-  cases_df <- dplyr::tribble(
-    ~time_onset, ~cases_true,
-    1, 10,
-    2, 30,
-    3, 60,
-    4, 50,
-    5, 30
-  )
-
-  posterior_shape <- prior_shape + sum(cases_df$cases_true[4:5])
-  posterior_rate <- prior_rate + sum(w * rev(cases_df$cases_true[1:3])) +
-    sum(w * rev(cases_df$cases_true[2:4]))
-
-  ndraws <- 1000
-  nresamples <- 10000
-
-  # for large kappa the NB and Poisson distributions should be similar
-  kappa <- 10000
-  Rt_nb <- sample_nb_Rt_piece(
-    prior_shape, prior_rate,
-    posterior_shape, posterior_rate,
-    kappa,
-    w,
-    onset_times,
-    cases_df,
-    ndraws,
-    nresamples)
-  expect_equal(length(Rt_nb), ndraws)
-  Rt_poisson <- stats::rgamma(ndraws, posterior_shape, posterior_rate)
-  expect_true(abs(mean(Rt_nb) - mean(Rt_poisson)) < 1)
-  expect_true(abs(sd(Rt_nb) - sd(Rt_poisson)) < 0.1)
-
-  # for small kappa the sd of NB should be greater
-  kappa <- 1
-  Rt_nb <- sample_nb_Rt_piece(
-    prior_shape, prior_rate,
-    posterior_shape, posterior_rate,
-    kappa,
-    w,
-    onset_times,
-    cases_df,
-    ndraws,
-    nresamples)
-  expect_true(sd(Rt_nb) > sd(Rt_poisson))
 })

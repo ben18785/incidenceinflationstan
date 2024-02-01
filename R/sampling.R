@@ -315,9 +315,15 @@ prepare_stan_data_and_init <- function(
   theta <- current_values$theta
 
   if(is_negative_binomial) {
-    prior_overdispersion <- priors$overdispersion
-    prior_kappa_a <- prior_overdispersion$location
-    prior_kappa_b <- prior_overdispersion$scale
+
+    if("overdispersion" %in% names(priors)) {
+      prior_overdispersion <- priors$overdispersion
+      prior_kappa_a <- prior_overdispersion$location
+      prior_kappa_b <- prior_overdispersion$scale
+    } else{
+      prior_kappa_a <- 0
+      prior_kappa_b <- 10
+    }
 
     current_value_overdispersion <- current_values$kappa
 
@@ -437,10 +443,7 @@ stan_initialisation <- function(
 #' @param eta a hyperparameter that when larger leads to slower decay in adaptations
 #' @param iteration iteration count
 #'
-#' @return a named list with elements: 'current', 'log_p_current'
-mu=mu,
-omega=omega,
-log_lambda=log_lambda
+#' @return a named list with elements: 'current', 'log_p_current', 'mu', 'omega', 'log_lambda'
 metropolis_step_Rt_reporting_overdispersion <- function(current, model, mu, omega, log_lambda, eta, iteration) {
 
   unconstrained_current <- model$unconstrain_variables(current)
@@ -567,7 +570,6 @@ mcmc_single <- function(
   initial_sigma=NULL,
   is_negative_binomial=FALSE,
   is_gamma_delay=TRUE,
-  initial_metropolis_parameters=1.0,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
@@ -714,7 +716,7 @@ mcmc_single <- function(
     if(i == 1 & !maximise) { # setup parameters for adaptive covariance MCMC
 
       mu <- model$unconstrain_variables(current)
-      omega <- diag(initial_metropolis_parameters, nrow = length(vars), ncol = length(vars))
+      omega <- diag(1.0, nrow = length(mu), ncol = length(mu))
       log_lambda <- 0
       eta <- 0.6 # standard value used in adaptive covariance
     }
@@ -843,6 +845,7 @@ mcmc_single <- function(
     else
       list_results$other <- overdispersion_samples %>% left_join(sigma_samples, by="iteration")
   } else{
+    if(is_rw_Rt_prior)
       list_results$other <- sigma_samples
   }
 
@@ -896,7 +899,7 @@ combine_chains <- function(list_of_results, is_either_nb_or_sigma=FALSE) {
     reporting=reporting_overall
   )
 
-  if(is_negative_binomial)
+  if(is_either_nb_or_sigma)
     list_combined$other <- other_overall
 
   list_combined
@@ -938,8 +941,6 @@ mcmc <- function(
     is_negative_binomial=FALSE,
     is_gamma_delay=TRUE,
     serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
-    is_negative_binomial=FALSE,
-    is_gamma_delay=TRUE,
     is_parallel=FALSE) {
 
   is_either_nb_or_sigma <- is_negative_binomial | !is.null(initial_sigma)
@@ -955,14 +956,13 @@ mcmc <- function(
                        stan_model,
                        initial_overdispersion,
                        initial_sigma,
-                       is_negative_binomia,
+                       is_negative_binomial,
                        is_gamma_delay,
                        serial_max,
                        p_gamma_cutoff,
                        maximise,
-                       print_to_screen,
-                       is_negative_binomial,
-                       is_gamma_delay)
+                       print_to_screen)
+
     res$cases$chain <- 1
     res$Rt$chain <- 1
     res$reporting$chain <- 1
@@ -986,14 +986,12 @@ mcmc <- function(
                       stan_model,
                       initial_overdispersion,
                       initial_sigma,
-                      is_negative_binomia,
+                      is_negative_binomial,
                       is_gamma_delay,
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
-                      print_to_screen,
-                      is_negative_binomial,
-                      is_gamma_delay)
+                      print_to_screen)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -1020,14 +1018,12 @@ mcmc <- function(
                            stan_model,
                            initial_overdispersion,
                            initial_sigma,
-                           is_negative_binomia,
+                           is_negative_binomial,
                            is_gamma_delay,
                            serial_max,
                            p_gamma_cutoff,
                            maximise,
-                           print_to_screen,
-                           is_negative_binomial,
-                           is_gamma_delay)
+                           print_to_screen)
         list_of_results[[i]] <- res
       }
     }
