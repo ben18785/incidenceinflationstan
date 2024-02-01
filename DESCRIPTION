@@ -1,0 +1,40 @@
+Package: incidenceinflation
+Title: Estimate R0 Given Case Reporting Delays
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Ben",
+           family = "Lambert",
+           role = c("aut", "cre"),
+           email = "ben.c.lambert@gmail.com")
+Description: What the package does (one paragraph).
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.2
+Suggests: 
+    doParallel,
+    foreach,
+    knitr,
+    posterior,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Imports: 
+    ggplot2,
+    dplyr,
+    purrr,
+    magrittr,
+    tidyr,
+    matrixStats,
+    rlang,
+    lubridate,
+    methods,
+    instantiate,
+    cmdstanr,
+    mvtnorm
+VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)
+Additional_repositories:
+    https://mc-stan.org/r-packages/

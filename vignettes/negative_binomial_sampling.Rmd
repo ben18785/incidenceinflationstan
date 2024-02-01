@@ -1,0 +1,209 @@
+---
+title: "A negative binomial renewal model"
+output: html_notebook
+---
+
+```{r}
+library(incidenceinflation)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(tidyr)
+library(purrr)
+```
+
+
+In this vignette, we show how to fit our model to data assuming a negative binomial renewal model.
+
+```{r}
+days_total <- 100
+
+# allow Rt to vary over time and construct interpolation function
+v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+# serial interval distribution parameters (assumed gamma)
+s_params <- list(mean=5, sd=3)
+
+# negative binomial over-dispersion parameter
+kappa <- 8
+
+# specify a reporting distribution that shortens after the first 50 days
+mean_1 <- 10
+mean_2 <- 3
+r_params <- tibble(
+  time_onset=seq(1, days_total, 1),
+  mean=c(rep(mean_1, 50), rep(mean_2, 50)),
+  sd=c(rep(3, 50), rep(2, 50))
+)
+
+# generate data
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa)
+```
+
+With a negative binomial model, the cases evolve more stochastically.
+```{r}
+df_true <- df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_true))
+df_true %>% 
+  ggplot(aes(x=time_onset, y=cases_true)) +
+  geom_line()
+```
+
+Performing inference assuming an (incorrect) Poisson model.
+```{r}
+snapshot_with_Rt_index_df <- df
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+
+reporting_pieces <- tibble(
+  time_onset=unique(df$time_onset),
+  reporting_piece_index=c(rep(1, 50), rep(2, 50))
+)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+  select(-cases_true) %>% 
+  left_join(reporting_pieces, by="time_onset")
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.5,
+                      2, 1.5,
+                      3, 0.4,
+                      4, 1.5,
+                      5, 1.5)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- tibble(
+  reporting_piece_index=unique(reporting_pieces$reporting_piece_index)
+) %>% 
+  mutate(
+    mean=c(5, 5),
+    sd=3
+  )
+serial_parameters <- list(mean=5, sd=3)
+Rt_prior <- list(shape=5, rate=5)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=5,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=10000)
+
+res <- mcmc(niterations=100,
+            snapshot_with_Rt_index_df,
+            priors,
+            serial_parameters,
+            initial_cases_true,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+            nchains = 1, is_parallel = FALSE)
+```
+
+Comparing estimated cases with true, we find a poor approximation.
+```{r}
+cases_df <- res$cases
+cases_sum <- cases_df %>% 
+  group_by(time_onset) %>% 
+  summarise(
+    lower=quantile(cases_true, 0.025),
+    middle=quantile(cases_true, 0.5),
+    upper=quantile(cases_true, 0.975)
+) %>% 
+  mutate(cases_true=df_true$cases_true)
+cases_sum %>% 
+  filter(time_onset >= 75) %>% 
+  ggplot(aes(x=time_onset)) +
+  geom_ribbon(aes(ymin=lower, ymax=upper),
+              fill="blue", alpha=0.4) +
+  geom_line(aes(y=middle), colour="blue") +
+  geom_line(aes(y=cases_true))
+```
+Now fitting a model assuming negative binomial renewal model.
+```{r}
+priors$overdispersion <- list(mean=5, sd=10)
+res_1 <- mcmc(niterations=100,
+            snapshot_with_Rt_index_df,
+            priors,
+            serial_parameters,
+            initial_cases_true,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+            nchains = 1, is_parallel = FALSE,
+            is_negative_binomial = TRUE,
+            overdispersion_metropolis_sd = 5)
+```
+
+Examine Markov chain sampling of overdispersion parameter
+```{r}
+res_1$overdispersion %>% 
+  ggplot(aes(x=iteration, y=overdispersion)) +
+  geom_line()
+```
+
+The negative binomial fits are better calibrated.
+```{r}
+cases_df <- res_1$cases
+cases_sum_nb <- cases_df %>% 
+  group_by(time_onset) %>% 
+  summarise(
+    lower=quantile(cases_true, 0.025),
+    middle=quantile(cases_true, 0.5),
+    upper=quantile(cases_true, 0.975)
+) %>% 
+  mutate(cases_true=df_true$cases_true) %>% 
+  mutate(model="negative binomial")
+cases_sum <- cases_sum %>% 
+  mutate(model="Poisson")
+
+cases_sum %>% 
+  bind_rows(cases_sum_nb) %>% 
+  filter(time_onset >= 75) %>% 
+  ggplot(aes(x=time_onset)) +
+  geom_ribbon(aes(ymin=lower, ymax=upper),
+              fill="blue", alpha=0.4) +
+  geom_line(aes(y=middle), colour="blue") +
+  geom_line(aes(y=cases_true)) +
+  facet_wrap(~model)
+```
+
+And the reporting parameters estimates look reasonable.
+```{r}
+res_1$reporting %>% 
+  ggplot(aes(x=iteration, y=mean)) +
+  geom_line() +
+  geom_hline(data=tibble(means=c(mean_1, mean_2),
+                         reporting_piece_index=c(1, 2)),
+                         aes(yintercept=means),
+             linetype=2) +
+  facet_wrap(~reporting_piece_index)
+```
+```{r}
+rt_nb <- res_1$Rt %>% 
+  group_by(Rt_index) %>% 
+  summarise(
+    sd=sd(Rt),
+    Rt=median(Rt)) %>% 
+  mutate(model="negative binomial")
+rt_poisson <- res$Rt %>% 
+  group_by(Rt_index) %>% 
+  summarise(
+    sd=sd(Rt),
+    Rt=median(Rt)) %>% 
+  mutate(model="Poisson")
+rt_nb
+rt_poisson
+```
+
+```{r}
+results_posterior_format <- convert_results_to_posterior_format(res)
+```
+

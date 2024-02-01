@@ -1,0 +1,155 @@
+---
+title: "Temporal variation in reporting delays"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{temporal_variation_in_reporting}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(incidenceinflation)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(tidyr)
+library(purrr)
+```
+
+In a real epidemic, the reporting delays may vary over time. In this vignette, we illustrate how this package can be used to simulate then fit a model allowing for temporally varying delays in case reporting.
+
+```{r}
+days_total <- 100
+
+# allow Rt to vary over time and construct interpolation function
+v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+# serial interval distribution parameters (assumed gamma)
+s_params <- list(mean=5, sd=3)
+
+# negative binomial over-dispersion parameter
+kappa <- 10
+
+# specify a reporting distribution that shortens after the first 50 days
+mean_1 <- 10
+mean_2 <- 3
+r_params <- tibble(
+  time_onset=seq(1, days_total, 1),
+  mean=c(rep(mean_1, 50), rep(mean_2, 50)),
+  sd=c(rep(3, 50), rep(2, 50))
+)
+
+# generate data
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa)
+```
+
+At t=40, there is large discrepancies between the cases reported and the true cases.
+```{r}
+t <- 40
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  geom_line(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
+```
+
+At t=90, these are much less marked.
+```{r}
+t <- 90
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  geom_line(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
+```
+
+Performing inference
+```{r}
+snapshot_with_Rt_index_df <- df
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+
+reporting_pieces <- tibble(
+  time_onset=unique(df$time_onset),
+  reporting_piece_index=c(rep(1, 50), rep(2, 50))
+)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%
+  select(-cases_true) %>% 
+  left_join(reporting_pieces, by="time_onset")
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.5,
+                      2, 1.5,
+                      3, 0.4,
+                      4, 1.5,
+                      5, 1.5)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- tibble(
+  reporting_piece_index=unique(reporting_pieces$reporting_piece_index)
+) %>% 
+  mutate(
+    mean=c(5, 5),
+    sd=3
+  )
+serial_parameters <- list(mean=5, sd=3)
+Rt_prior <- list(shape=5, rate=5)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=5,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=10000)
+
+res <- mcmc(niterations=100,
+            snapshot_with_Rt_index_df,
+            priors,
+            serial_parameters,
+            initial_cases_true,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE,
+            nchains = 1, is_parallel = FALSE)
+```
+
+The reporting delay means converge towards their true means.
+```{r}
+res$reporting %>% 
+  group_by(reporting_piece_index) %>% 
+  filter(iteration >= 50) %>% 
+  summarise(mean=median(mean),
+            sd=median(sd))
+
+res$reporting %>% 
+  ggplot(aes(x=iteration, y=mean)) +
+  geom_line() +
+  geom_hline(data=tibble(means=c(mean_1, mean_2),
+                         reporting_piece_index=c(1, 2)),
+                         aes(yintercept=means),
+             linetype=2) +
+  facet_wrap(~reporting_piece_index)
+```
+
+

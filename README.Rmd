@@ -1,0 +1,40 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# incidenceinflation
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/ben18785/incidenceinflation/workflows/R-CMD-check/badge.svg)](https://github.com/ben18785/incidenceinflation/actions)
+<!-- badges: end -->
+
+The goal of incidenceinflation is to estimate R0 and true incidence given reporting delays.
+
+## Installation
+
+You can install the released version of incidenceinflation from [CRAN](https://CRAN.R-project.org) with:
+
+``` r
+devtools::install_github(ben18785/incidenceinflation)
+```
+
+## Example
+
+Generate simulated data
+
+```{r example}
+library(incidenceinflation)
+## basic example code
+```
+

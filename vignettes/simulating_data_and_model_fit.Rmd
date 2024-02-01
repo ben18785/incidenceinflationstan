@@ -1,0 +1,524 @@
+---
+title: "Simulating data and fitting a model"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{simulating_data_and_model_fit}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(incidenceinflation)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(tidyr)
+library(purrr)
+```
+
+We first generate a true case series using a negative binomial renewal process.
+Here, we assume a time-varying Rt.
+```{r}
+days_total <- 100
+
+# allow Rt to vary over time and construct interpolation function
+v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+
+# serial interval distribution parameters (assumed gamma)
+s_params <- list(mean=5, sd=3)
+
+# negative binomial over-dispersion parameter
+kappa <- 5
+
+# generate series
+cases <- true_cases(days_total, Rt_function, kappa, s_params,
+                    initial_parameters=list(mean=30, length=30))
+
+# plot series
+tibble(d=1:days_total,
+       cases=cases,
+       Rt=v_Rt) %>%
+  ggplot(aes(x=d)) +
+  geom_point(aes(y=cases)) +
+  geom_line(aes(y=cases)) +
+  geom_line(aes(y=Rt * 500), colour="orange") +
+  scale_y_continuous(sec.axis = sec_axis(~./500, name = "Rt"))
+```
+In our model, we assume that cases arising on a given day aren't necessarily observed until some time in the future. In other words, there are imperfections in case reporting meaning that cases may not be uncovered until much after they arise.
+
+We now use the true case series generated previous to simulate observed case trajectories: there is a trajectory for each onset day.
+```{r}
+# reporting delay distribution (assumed gamma)
+r_params <- list(location=10, scale=3)
+
+df <- observed_cases(cases, r_params, days_max_follow_up=40)
+glimpse(df)
+```
+
+For example, consider those cases arising on day 10. We can plot the number of reported cases which arised on that day subsequently. Over time, reported cases tends to true case counts as move cases arising on day 10 are retroactively uncovered.
+```{r}
+df %>% 
+  filter(time_onset == 10) %>% 
+  pivot_longer(cols=c("cases_reported", "cases_true")) %>% 
+  ggplot(aes(x=time_reported, y=value, colour=name)) +
+  geom_line() +
+  scale_color_brewer("Cases", palette = "Dark2")
+```
+Now plotting the same but for each onset day, we obtain a series of trajectories for reported cases.
+```{r}
+df %>% 
+  filter(time_onset <= 10) %>% 
+  ggplot(aes(x=time_reported, y=cases_reported,
+             colour=time_onset, group=as.factor(time_onset))) +
+  geom_line()
+```
+
+
+Another way of understanding these data is that the historical snapshots of the epidemic change as time goes on and more cases are retroactively reported. We imagine we are at $t=40$ and consider how the history of cases changes as time goes on.
+```{r}
+t <- 40
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
+```
+
+The process of generated these types of snapshot data is automated in a single function.
+```{r}
+df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                         kappa=kappa)
+
+df %>% 
+  filter(time_onset <= t) %>% 
+  filter(time_reported >= t) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line(aes(colour=time_reported,
+                group=time_reported)) +
+  geom_point(aes(y=cases_true), colour="black") +
+  geom_line(aes(y=cases_true), colour="black") +
+  scale_colour_viridis_c(begin = 0.2)
+```
+These snapshots can alternatively be visualised using a so-called reporting trapezoid. Here, we draw this at reporting time $t=50$.
+```{r}
+df %>% 
+  filter(time_reported <= 50) %>% 
+  mutate(time_delay=time_reported-time_onset) %>% 
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
+```
+
+Trying to estimate cases but assuming we know the Rt values over time, the reporting delay distribution and the serial delay distribution.
+```{r}
+days_total <- 100
+kappa <- 5
+df <- generate_snapshots(days_total, Rt_function,
+                         s_params, r_params,
+                          kappa=kappa, thinned=T) %>% 
+  mutate(reporting_piece_index=1) # denotes a single reporting delay distribution
+max_cases <- 5000
+r_params_df <- tibble(location=r_params$location, scale=r_params$scale,
+                      reporting_piece_index=1)
+df_est <- sample_cases_history(df, max_cases, Rt_function, s_params, r_params_df, maximise = F)
+df_est %>% 
+  group_by(time_onset) %>% 
+  mutate(cases_reported=max(cases_reported)) %>% 
+  pivot_longer(c(cases_true, cases_estimated, cases_reported)) %>%
+  ggplot(aes(x=time_onset, y=value, colour=as.factor(name))) +
+  geom_line() +
+  scale_color_brewer("Series", palette = "Dark2") +
+  xlab("Onset time") +
+  ylab("Cases") +
+  theme(legend.position = c(0.6, 0.6))
+```
+
+Sampling a value of Rt but assuming we know the true case history (and everything else).
+```{r}
+cases_history_df <- df
+
+# we split Rt up into intervals of duration 20 days
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+
+cases_history_df <- cases_history_df %>% 
+  left_join(Rt_index_lookup, by = "time_onset") %>% 
+  select(time_onset, cases_true, Rt_index) %>% 
+  unique()
+
+# Prior on each Rt segment value
+Rt_prior <- list(location=2, scale=3)
+
+Rt_df_nb <- sample_Rt(cases_history_df,
+  Rt_prior, s_params,
+  ndraws = 1000,
+  serial_max = 20,
+  is_negative_binomial = TRUE,
+  kappa=10) %>% 
+  mutate(method="negative_binomial")
+Rt_df_po <- sample_Rt(cases_history_df,
+  Rt_prior, s_params,
+  ndraws = 1000,
+  serial_max = 20) %>% 
+  mutate(method="poisson")
+
+# graph posterior samples vs actual Rt values
+Rt_df_po %>% 
+  right_join(Rt_index_lookup, by = "Rt_index") %>%
+  mutate(type="estimated") %>% 
+  bind_rows(tibble(Rt=v_Rt, time_onset=seq(1, days_total, 1),
+                   type="actual")) %>% 
+  ggplot(aes(x=time_onset,
+             y=Rt, group=as.factor(draw_index))) +
+  geom_line(data=. %>% filter(type=="estimated"), alpha=0.1) +
+  geom_line(data=. %>% filter(type=="actual"), colour="orange") +
+  xlab("Onset time")
+```
+
+# Inference on simulated data
+
+```{r}
+snapshot_with_Rt_index_df <- df
+# poor initial estimate of cases
+initial_cases_true <- df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_reported))
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>%  select(-cases_true)
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.0,
+                      2, 1.0,
+                      3, 1.0,
+                      4, 1.0,
+                      5, 1.0)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+Rt_prior <- list(location=1.5, scale=2, is_gamma=FALSE)
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(location=5, scale=2)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=10,
+                              mean_sigma=10,
+                              sd_mu=10,
+                              sd_sigma=5),
+               overdispersion=list(
+                 location=0,
+                 scale=10
+               ),
+               max_cases=5000)
+
+
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
+                                      compile_model_methods=TRUE,
+                                      force_recompile=TRUE)
+options(cmdstanr_warn_inits = FALSE)
+opt <- mcmc_single(5,
+  snapshot_with_Rt_index_df,
+  priors,
+  s_params,
+  initial_cases_true,
+  initial_reporting_parameters,
+  initial_Rt,
+  stan_model,
+  maximise = TRUE,
+  is_negative_binomial=TRUE,
+  initial_overdispersion = 10,
+  initial_sigma=1)
+
+test <- opt
+res <- test
+new_init_reporting <- res$reporting %>% 
+  group_by(reporting_piece_index) %>% 
+  summarise(
+    location=last(location),
+    scale=last(scale)
+  )
+new_init_reporting
+initial_overdispersion <- last(opt$other$overdispersion)
+
+new_init_Rt <- res$Rt %>% 
+  left_join(snapshot_with_Rt_index_df) %>% 
+  group_by(Rt_index) %>% 
+  summarise(Rt=last(Rt))
+test <- mcmc_single(
+  300,
+  snapshot_with_Rt_index_df,
+  priors,
+  s_params,
+  initial_cases_true=res$cases %>% group_by(time_onset) %>% summarise(cases_true=last(cases_true)),
+  initial_reporting_parameters=new_init_reporting,
+  initial_Rt=new_init_Rt,
+  stan_model,
+  initial_overdispersion = initial_overdispersion,
+  is_negative_binomial = TRUE
+)
+res <- test
+b <- test$Rt
+theta <- test$reporting
+b %>% 
+  ggplot(aes(x=iteration, y=Rt)) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+theta %>% 
+  pivot_longer(-c(reporting_piece_index, iteration)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
+  geom_line()
+
+# time_onset, Rt_index, cases_true
+df_1 <- df %>% 
+  left_join(snapshot_with_Rt_index_df %>% select(-c(cases_reported, time_reported)) %>% unique)
+current_values <- list(
+  Rt=tibble(Rt=c(1.5, 1.5, 0.5, 1.5, 1.5)),
+  theta=matrix(c(10, 3), ncol = 2)
+)
+model <- incidenceinflation:::stan_initialisation(df_1,
+    current_values,
+    priors,
+    is_negative_binomial=FALSE,
+    is_rw_prior=FALSE,
+    serial_parameters=s_params,
+    serial_max=40,
+    is_gamma_delay=TRUE,
+    stan_model=stan_model)
+
+current_values_1 <- list(
+  R=c(1.6717150, 1.5452372, 0.4045715, 1.5275197, 1.4537464),
+  theta=matrix(c(10, 3), nrow=1, ncol=2)
+)
+uncons <- model$unconstrain_variables(current_values_1)
+model$log_prob(uncons)
+f_fn <- function(theta) {
+  -model$log_prob(theta)
+}
+vals <- optim(uncons, f_fn)
+model$constrain_variables(vals$par)
+
+v_Rt <- c(rep(1.6717150, 20),  rep(1.5452372, 20), rep(0.4045715, 20), rep(1.5275197, 20), rep(1.4537464, 20))
+Rt_function <- stats::approxfun(1:days_total, v_Rt)
+    
+temp <- sample_cases_history(
+      df %>% select(-cases_true), max_cases=5000,
+      Rt_function, s_params,
+      dplyr::tibble(mean=9.5, sd=3.02, reporting_piece_index=1),
+      maximise = TRUE)
+
+
+opt <- incidenceinflation:::maximise_Rt_reporting_overdispersion(
+        current, log_p_current, model
+      )
+
+# running MCMC across 2 chains
+## uncomment to run in parallel
+# library(doParallel)
+# cl <- makeCluster(2)
+# registerDoParallel(cl)
+res <- mcmc(800,
+  snapshot_with_Rt_index_df,
+  priors,
+  serial_parameters,
+  initial_cases_true,
+  initial_reporting_parameters,
+  initial_Rt,
+  stan_model,
+  nchains = 1,
+  is_parallel = FALSE)
+## uncomment if running in parallel
+# stopCluster(cl)
+
+b <- res$Rt
+theta <- res$reporting
+b %>% 
+  ggplot(aes(x=iteration, y=Rt, colour=as.factor(chain))) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+theta %>% 
+  pivot_longer(-c(reporting_piece_index, iteration, chain)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=as.factor(chain))) +
+  geom_line() +
+  facet_wrap(~name)
+
+cases <- res$cases
+
+```
+
+Check convergence diagnostics
+```{r}
+library(posterior)
+
+results_posterior_format <- convert_results_to_posterior_format(res)
+
+# only look at Rt here due to space
+summarise_draws(results_posterior_format$Rt)
+```
+
+
+Examine results
+```{r}
+onsets <- 91:100
+cases_true_df <- df %>% 
+  filter(time_onset %in% onsets) %>% 
+  rename(cases_known=cases_true)
+cases_df <- res$cases %>% 
+  filter(time_onset %in% onsets) %>% 
+  left_join(cases_true_df %>% select(-c(cases_reported, time_reported))) %>% 
+  pivot_longer(c(cases_true, cases_known))
+
+cases_df %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
+  geom_line() +
+  facet_wrap(~time_onset)
+
+res_df <- res$Rt
+
+# initialisers were at true values
+Rt_true <- initial_Rt %>% 
+  rename(Rt_true=Rt)
+
+res_df %>% 
+  left_join(Rt_true) %>% 
+  pivot_longer(c(Rt, Rt_true)) %>% 
+  ggplot(aes(x=iteration, y=value, colour=name)) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+
+rep_df <- res$reporting %>% 
+  mutate(type="estimated") %>% 
+  bind_rows(tibble(mean=r_params$mean, sd=r_params$sd, type="true")) %>% 
+  pivot_longer(-c(iteration, type))
+
+ggplot(data=rep_df %>% filter(type=="estimated"),
+       aes(x=iteration, y=value)) +
+  geom_hline(data=rep_df %>% filter(type=="true"),
+             aes(yintercept=value), linetype=2) +
+  geom_line() +
+  facet_wrap(~name, scales="free")
+```
+
+# MCMC on real measles data in the Netherlands 2013-14
+```{r}
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  ggplot(aes(x=time_onset, y=time_delay,
+             fill=cases_reported)) +
+  geom_tile() +
+  scale_fill_distiller(direction=1)
+
+measles_NL_2013 %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported=sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=cases_reported)) +
+  geom_line()
+
+# alternative view
+measles_NL_2013 %>% 
+  mutate(time_delay=time_reported-time_onset) %>%
+  group_by(time_onset) %>% 
+  summarise(time_delay=sum(time_delay * cases_reported) / sum(cases_reported)) %>% 
+  ggplot(aes(x=time_onset, y=time_delay)) +
+  geom_line()
+```
+
+Prepare data for fitting
+```{r}
+snapshot_with_Rt_index_df <- thin_series(measles_NL_2013) %>% 
+  select(-date_onset) %>% 
+  group_by(time_onset) %>% 
+  mutate(time_reported=time_reported,
+         cases_reported=cumsum(cases_reported))
+
+# filter and rebase time to start when first case appears
+df_sum <- snapshot_with_Rt_index_df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_reported=last(cases_reported)) %>% 
+  ungroup() %>% 
+  filter(cases_reported>0)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  ungroup() %>% 
+  filter(time_onset >= df_sum$time_onset[1]) %>% 
+  mutate(time_reported=time_reported - df_sum$time_onset[1] + 1,
+         time_onset=time_onset - df_sum$time_onset[1] + 1)
+
+initial_cases_true <- snapshot_with_Rt_index_df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_reported)) 
+  
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1,
+                      2, 1,
+                      3, 1,
+                      4, 1,
+                      5, 1)
+Rt_indices <- c(unlist(map(seq(1, 5, 1), ~rep(., 26))), 5)
+
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(mean=10, sd=3)
+serial_parameters <- list(mean=12, sd=3)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=10,
+                              mean_sigma=10,
+                              sd_mu=3,
+                              sd_sigma=5),
+               max_cases=100)
+```
+
+Artificially remove hindsight for those onset times near end; we do this by assuming that time_reported=138
+```{r}
+hindsight_removed_df <- snapshot_with_Rt_index_df %>% 
+  filter(time_reported <= 138)
+
+res <- mcmc(niterations=400,
+            hindsight_removed_df,
+            priors,
+            serial_parameters,
+            initial_cases_true,
+            initial_reporting_parameters,
+            initial_Rt,
+            reporting_metropolis_parameters=list(mean_step=0.25, sd_step=0.1),
+            serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE)
+```
+
+Rt estimates
+```{r}
+res_df <- res$Rt
+
+res_df %>% 
+  ggplot(aes(x=iteration, y=Rt)) +
+  geom_line() +
+  facet_wrap(~Rt_index)
+```
+Cases
+```{r}
+onsets <- 111:119
+cases_df <- res$cases %>% 
+  filter(time_onset %in% onsets)
+
+cases_df %>% 
+  ggplot(aes(x=iteration, y=cases_true)) +
+  geom_line() +
+  facet_wrap(~time_onset)
+```
+
