@@ -15,13 +15,12 @@ mcmc_single(
   stan_model,
   initial_overdispersion = NULL,
   initial_sigma = NULL,
-  initial_metropolis_parameters = 1,
+  is_negative_binomial = FALSE,
+  is_gamma_delay = TRUE,
   serial_max = 40,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
-  print_to_screen = TRUE,
-  is_negative_binomial = FALSE,
-  is_gamma_delay = TRUE
+  print_to_screen = TRUE
 )
 }
 \arguments{
@@ -33,12 +32,14 @@ which specifies which reporting distribubtion each onset time corresponds to}
 
 \item{priors}{a named list with: 'Rt', 'reporting', 'max_cases' (and optionally
 'overdispersion' if using a negative binomial model). These take
-the form: 'Rt' is a named list with elements 'shape' and 'rate' describing
-the gamma prior for each Rt; 'reporting' is a named list with elements
-'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the gamma
-prior parameters for the mean and sd parameters of the reporting parameters
-(itself described by a gamma distribution); max cases controls the upper
-limit of the discrete uniform distribution representing the prior on true
+the form: 'Rt' is a named list with elements 'location', 'scale' and 'is_gamma'. If
+is_gamma is TRUE, then an independent gamma prior is placed on each Rt value; if
+is_gamma is FALSE, a random walk prior is specified on the Rt values;
+reporting' is a named list with elements
+'mean_mu', 'mean_sigma', 'sd_mu', 'sd_sigma' representing the
+prior parameters for the mean and sd parameters of the reporting parameter distribution
+(itself described by a gamma distribution by default and a lognormal if is_gamma_delay is FALSE);
+max cases controls the upper limit of the discrete uniform distribution representing the prior on true
 cases; 'overdispersion' is a named list specifying the mean and sd of a gamma
 prior on this parameter}
 
@@ -58,7 +59,16 @@ provided in the data frame).}
 Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'}
 
 \item{initial_overdispersion}{the initial value of the overdispersion parameter if
-assuming a negative binomial sampling model (default to 5).}
+assuming a negative binomial sampling model (default to 5)}
+
+\item{initial_sigma}{the initial value of the sigma parameter that characterises
+the random walk prior if selected for Rt}
+
+\item{is_negative_binomial}{Boolean indicating whether to use a negative binomial renewal model
+or a Poisson model (if FALSE). By default a Poisson model is assumed}
+
+\item{is_gamma_delay}{Boolean indicating whether a gamma reporting delay distribution
+is assumed (if TRUE) or a lognormal (if FALSE). By default, a gamma distribution is assumed}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
@@ -69,9 +79,6 @@ we deem certainty}
 sample parameter values using MCMC (if false). By default this is false.}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true.}
-
-\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
-be a gamma; if FALSE, a lognormal distribution}
 
 \item{reporting_metropolis_parameters}{named list of 'mean_step', 'sd_step' containing
 step sizes for Metropolis step}

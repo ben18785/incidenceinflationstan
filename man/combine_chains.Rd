@@ -4,10 +4,12 @@
 \alias{combine_chains}
 \title{Combines Markov chains across multiple runs of mcmc_single}
 \usage{
-combine_chains(list_of_results, is_negative_binomial = FALSE)
+combine_chains(list_of_results, is_either_nb_or_sigma = FALSE)
 }
 \arguments{
 \item{list_of_results}{a list of results, where each element is a result of running mcmc_single}
+
+\item{is_either_nb_or_sigma}{Boolean indicating whether model is negative binomial or includes sigma parameter}
 }
 \value{
 a named list of three tibbles: "cases", "Rt" and "reporting" (and if running

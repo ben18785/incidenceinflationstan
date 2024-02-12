@@ -6,7 +6,8 @@
 \usage{
 observation_process_all_times_logp(
   snapshot_with_true_cases_df,
-  reporting_parameters
+  reporting_parameters,
+  is_gamma_delay = TRUE
 )
 }
 \arguments{

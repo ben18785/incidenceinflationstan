@@ -2,7 +2,7 @@
 % Please edit documentation in R/sampling.R
 \name{prepare_stan_data_and_init}
 \alias{prepare_stan_data_and_init}
-\title{Title}
+\title{Prepares data into list for Stan file and also outputs initialisation function}
 \usage{
 prepare_stan_data_and_init(
   df,
@@ -20,8 +20,8 @@ prepare_stan_data_and_init(
 \item{is_gamma_delay}{}
 }
 \value{
-
+a named list of 'data' and 'init'
 }
 \description{
-Title
+Prepares data into list for Stan file and also outputs initialisation function
 }

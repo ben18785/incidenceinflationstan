@@ -14,15 +14,14 @@ mcmc(
   initial_Rt,
   stan_model,
   nchains = 1,
-  initial_overdispersion = 5,
-  initial_sigma = 5,
-  initial_metropolis_parameters = 1,
+  initial_overdispersion = NULL,
+  initial_sigma = NULL,
+  is_negative_binomial = FALSE,
+  is_gamma_delay = TRUE,
   serial_max = 40,
   p_gamma_cutoff = 0.99,
   maximise = FALSE,
   print_to_screen = TRUE,
-  is_negative_binomial = FALSE,
-  is_gamma_delay = TRUE,
   is_parallel = FALSE
 )
 }
@@ -58,7 +57,16 @@ Provided in the form of a tibble with columns: 'Rt_index' and 'Rt'}
 \item{nchains}{number of Markov chains to run. Defaults to 1}
 
 \item{initial_overdispersion}{the initial value of the overdispersion parameter if
-assuming a negative binomial sampling model (default to 5).}
+assuming a negative binomial sampling model (default to 5)}
+
+\item{initial_sigma}{the initial value of the sigma parameter that characterises
+the random walk prior if selected for Rt}
+
+\item{is_negative_binomial}{Boolean indicating whether to use a negative binomial renewal model
+or a Poisson model (if FALSE). By default a Poisson model is assumed}
+
+\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
+be a gamma; if FALSE, a lognormal distribution}
 
 \item{serial_max}{maximum point at which to truncate sum in renewal process}
 
@@ -69,9 +77,6 @@ we deem certainty}
 maximum probability (by default is FALSE)}
 
 \item{print_to_screen}{prints progress of MCMC sampling to screen. Defaults to true. Disabled when is_parallel is TRUE.}
-
-\item{is_gamma_delay}{if TRUE, the reporting delay distribution is thought to
-be a gamma; if FALSE, a lognormal distribution}
 
 \item{is_parallel}{Boolean to indicate whether or not to run chains in parallel. Defaults to FALSE.}
 }
