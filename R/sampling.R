@@ -419,6 +419,7 @@ stan_initialisation <- function(
   init_fn <- tmp$init
 
   print(init_fn())
+  print(data_stan)
 
   # model must be run for one iteration to give access to log-prob
   model <- stan_model$sample(
