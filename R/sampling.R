@@ -418,10 +418,6 @@ stan_initialisation <- function(
   data_stan <- tmp$data
   init_fn <- tmp$init
 
-  print(init_fn())
-  print(data_stan)
-  print(stan_model)
-
   # model must be run for one iteration to give access to log-prob
   model <- stan_model$sample(
     data=data_stan,
@@ -434,7 +430,6 @@ stan_initialisation <- function(
     show_exceptions = FALSE,
     chains=1)
   model$init_model_methods()
-  print("tests")
   model
 }
 
@@ -706,8 +701,6 @@ mcmc_single <- function(
     if(is_rw_Rt_prior)
       current$sigma <- sigma_current
 
-    print(current)
-
     # just runs model for one iteration to give access to log_p
     model <- stan_initialisation(
       df_temp %>%
@@ -721,7 +714,6 @@ mcmc_single <- function(
       is_gamma_delay,
       stan_model)
 
-    print("biya")
 
     if(i == 1 & !maximise) { # setup parameters for adaptive covariance MCMC
 
