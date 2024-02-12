@@ -141,7 +141,8 @@ conditional_cases_logp <- function(cases_true, observation_df, cases_history,
 #' @importFrom rlang .data
 observation_process_all_times_logp <- function(
   snapshot_with_true_cases_df,
-  reporting_parameters){
+  reporting_parameters,
+  is_gamma_delay=TRUE){
 
   if(methods::is(reporting_parameters, "list"))
     stop("Reporting parameters should be a tibble not a list.")
@@ -151,7 +152,7 @@ observation_process_all_times_logp <- function(
 
   reporting_parameters <- snapshot_with_true_cases_df %>%
     dplyr::left_join(reporting_parameters, by="reporting_piece_index") %>%
-    dplyr::select("time_onset", "mean", "sd") %>%
+    dplyr::select("time_onset", "location", "scale") %>%
     unique()
 
   logp <- 0
@@ -165,8 +166,8 @@ observation_process_all_times_logp <- function(
   if(n_onset != nrow(test_df))
     stop("There must be only one true case measurement per each onset time.")
 
-  mu <- reporting_parameters$mean
-  sd <- reporting_parameters$sd
+  mu <- reporting_parameters$location
+  sd <- reporting_parameters$scale
   if(sum(mu < 0) > 0 | sum(sd < 0) > 0)
     return(-Inf)
 
@@ -175,14 +176,15 @@ observation_process_all_times_logp <- function(
     short_df <- snapshot_with_true_cases_df %>%
       dplyr::filter(.data$time_onset==onset_time)
     cases_true <- short_df$cases_true[1]
-    reporting_parameters_current <- list(mean=reporting_parameters$mean[i],
-                                         sd=reporting_parameters$sd[i])
+    reporting_parameters_current <- list(location=reporting_parameters$location[i],
+                                         scale=reporting_parameters$scale[i])
     if(nrow(short_df) > 1) {# handling cases arising today which were reported today
       logp_new <- observation_process_logp(
         short_df,
         cases_true=cases_true,
         day_onset=onset_time,
-        reporting_parameters=reporting_parameters_current)
+        reporting_parameters=reporting_parameters_current,
+        is_gamma_delay=is_gamma_delay)
       logp <- logp + logp_new
     }
   }
