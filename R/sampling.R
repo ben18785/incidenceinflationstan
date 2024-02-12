@@ -572,6 +572,8 @@ mcmc_single <- function(
   is_gamma_delay=TRUE,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
 
+  print("hello")
+
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
                       "cases_reported", "Rt_index")
@@ -646,6 +648,8 @@ mcmc_single <- function(
   }
 
   max_cases <- priors$max_cases
+
+  print("hiya")
 
   k <- 1
   for(i in 1:niterations) {
