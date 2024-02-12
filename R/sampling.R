@@ -433,6 +433,7 @@ stan_initialisation <- function(
     show_exceptions = FALSE,
     chains=1)
   model$init_model_methods()
+  print("tests")
   model
 }
 
