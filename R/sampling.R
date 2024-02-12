@@ -403,6 +403,7 @@ stan_initialisation <- function(
     is_gamma_delay,
     stan_model) {
 
+  print("buttt")
   tmp <- prepare_stan_data_and_init(
     df,
     current_values,
@@ -416,6 +417,8 @@ stan_initialisation <- function(
 
   data_stan <- tmp$data
   init_fn <- tmp$init
+
+  print(init_fn())
 
   # model must be run for one iteration to give access to log-prob
   model <- stan_model$sample(
@@ -714,6 +717,8 @@ mcmc_single <- function(
       serial_max,
       is_gamma_delay,
       stan_model)
+
+    print("biya")
 
     if(i == 1 & !maximise) { # setup parameters for adaptive covariance MCMC
 
