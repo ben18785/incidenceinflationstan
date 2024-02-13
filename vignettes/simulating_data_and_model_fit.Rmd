@@ -182,6 +182,74 @@ Rt_df_po %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time")
 ```
+# Inference on simulated data with perfect cases -- using Stan model
+```{r}
+snapshot_with_Rt_index_df <- df
+# poor initial estimate of cases
+initial_cases_true <- df %>% 
+  group_by(time_onset) %>% 
+  summarise(cases_true=last(cases_reported))
+# initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+
+initial_Rt <- tribble(~Rt_index, ~Rt,
+                      1, 1.0,
+                      2, 1.0,
+                      3, 1.0,
+                      4, 1.0,
+                      5, 1.0)
+Rt_indices <- unlist(map(seq(1, 5, 1), ~rep(., 20)))
+Rt_prior <- list(location=1.5, scale=2, is_gamma=FALSE)
+Rt_index_lookup <- tibble(
+  time_onset=seq_along(Rt_indices),
+  Rt_index=Rt_indices)
+snapshot_with_Rt_index_df <- snapshot_with_Rt_index_df %>% 
+  left_join(Rt_index_lookup)
+
+initial_reporting_parameters <- list(location=5, scale=2)
+priors <- list(Rt=Rt_prior,
+               reporting=list(mean_mu=10,
+                              mean_sigma=10,
+                              sd_mu=10,
+                              sd_sigma=5),
+               overdispersion=list(
+                 location=0,
+                 scale=10
+               ),
+               max_cases=5000)
+
+
+stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal_1.stan",
+                                      compile_model_methods=TRUE,
+                                      force_recompile=TRUE)
+current_values <- list(
+  Rt=tibble(Rt=c(1.5, 1.5, 0.5, 1.5, 1.5)),
+  theta=matrix(c(10, 3), ncol = 2)
+)
+tmp <- incidenceinflationstan:::prepare_stan_data_and_init(
+    snapshot_with_Rt_index_df,
+    current_values,
+    priors,
+    is_negative_binomial=TRUE,
+    is_rw_prior=FALSE,
+    s_params,
+    serial_max=40,
+    1,
+    is_gamma_delay=TRUE)
+
+data_stan <- tmp$data
+
+model <- stan_model$sample(
+    data=data_stan,
+    iter_warmup = 50,
+    iter_sampling = 400,
+    refresh = 0,
+    show_exceptions = FALSE,
+    chains=1)
+df_out <- model$draws(format = "data.frame")
+plot(df_out$`R[1]`)
+```
+
+
 
 # Inference on simulated data
 

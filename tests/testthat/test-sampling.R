@@ -698,3 +698,84 @@ test_that("multiple chains works", {
   # expect_equal(max(rep_df$chain), nchains)
 
 })
+
+test_that("prepare_stan_data_and_init works", {
+
+  days_total <- 100
+  r_params <- list(location=10, scale=3)
+  s_params <- list(mean=5, sd=3)
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  Rt_prior <- list(location=1, scale=5, is_gamma=TRUE)
+  kappa <- 10
+  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                           kappa=kappa)
+  Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+  Rt_index_lookup <- dplyr::tibble(
+    time_onset=seq_along(Rt_indices),
+    Rt_index=Rt_indices)
+  df <- df %>%
+    dplyr::left_join(Rt_index_lookup, by = "time_onset") %>%
+    mutate(reporting_piece_index=1)
+
+  current_values <- list(
+    R=c(1.5, 1.5, 0.5, 1.5, 1.5),
+    theta=matrix(c(10, 3), ncol = 2)
+  )
+  priors <- list(Rt=Rt_prior,
+                 reporting=list(mean_mu=5,
+                                mean_sigma=10,
+                                sd_mu=3,
+                                sd_sigma=5),
+                 max_cases=5000)
+
+  res <- prepare_stan_data_and_init(df,
+                      current_values,
+                      priors,
+                      is_negative_binomial=FALSE,
+                      is_rw_prior=FALSE,
+                      serial_parameters=s_params,
+                      serial_max=40,
+                      is_gamma_delay=TRUE)
+  data_stan <- res$data
+  expect_equal(data_stan$N, days_total)
+  expect_equal(length(data_stan$w), 40)
+  init_fn <- res$init
+  vals <- init_fn()
+  expect_equal(vals$R, current_values$R)
+  expect_equal(vals$theta, current_values$theta)
+
+  model <- stan_model$sample(
+    data=data_stan,
+    init = init_fn,
+    iter_warmup = 1,
+    iter_sampling = 0,
+    adapt_delta=0.9,
+    refresh = 0,
+    show_messages = FALSE,
+    show_exceptions = FALSE,
+    chains=1)
+  model$init_model_methods()
+
+  log_p_1 <- model$log_prob(uncons)
+
+  val <- data_stan$cases_true[length(data_stan$cases_true)]
+  data_stan$cases_true[data_stan$cases_true==val] <- val - 1000
+  # another_val <- data_stan$cases_true[1]
+  # data_stan$cases_true[data_stan$cases_true==another_val] <- val + 10
+
+  model <- stan_model$sample(
+    data=data_stan,
+    init = init_fn,
+    iter_warmup = 1,
+    iter_sampling = 0,
+    adapt_delta=0.9,
+    refresh = 0,
+    show_messages = FALSE,
+    show_exceptions = FALSE,
+    chains=1)
+  model$init_model_methods()
+  log_p_2 <- model$log_prob(uncons)
+
+})
+

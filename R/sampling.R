@@ -403,7 +403,6 @@ stan_initialisation <- function(
     is_gamma_delay,
     stan_model) {
 
-  print("buttt")
   tmp <- prepare_stan_data_and_init(
     df,
     current_values,
@@ -421,7 +420,6 @@ stan_initialisation <- function(
   # model must be run for one iteration to give access to log-prob
   model <- stan_model$sample(
     data=data_stan,
-    init = init_fn,
     iter_warmup = 1,
     iter_sampling = 0,
     adapt_delta=0.9,
