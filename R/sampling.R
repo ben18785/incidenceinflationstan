@@ -299,7 +299,6 @@ prepare_stan_data_and_init <- function(
     is_rw_prior,
     serial_parameters,
     serial_max,
-    n_iterations,
     is_gamma_delay) {
 
   df_short <- df %>%
@@ -411,7 +410,6 @@ stan_initialisation <- function(
     is_rw_prior,
     serial_parameters,
     serial_max,
-    n_iterations,
     is_gamma_delay)
 
   data_stan <- tmp$data
@@ -429,6 +427,126 @@ stan_initialisation <- function(
     chains=1)
   model$init_model_methods()
   model
+}
+
+get_step_size <- function(
+    df,
+    current_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay,
+    stan_model,
+    n_warmup=10) {
+
+  tmp <- prepare_stan_data_and_init(
+    df,
+    current_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay)
+
+  data_stan <- tmp$data
+  init_fn <- tmp$init
+
+  model <- stan_model$sample(
+    data=data_stan,
+    init=init_fn,
+    iter_warmup = n_warmup,
+    iter_sampling = 0,
+    adapt_delta=0.9,
+    chains=1)
+
+  step_size <- model$metadata()$step_size_adaptation
+
+  step_size
+}
+
+extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
+
+  Rs <- fit$draws("R", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw))
+  Rs <- Rs[nrow(Rs), ] %>%
+    unlist() %>%
+    unname()
+
+  df_Rt <- dplyr::tibble(
+    Rt=Rs,
+    Rt_index=seq_along(Rt)
+  )
+
+  # TODO handle multiple theta case
+  theta <- fit$draws("theta", format="df") %>%
+    as.data.frame() %>%
+    dplyr::select(-c(.iteration, .chain, .draw))
+  theta <- theta[nrow(theta), ] %>%
+    unlist() %>%
+    unname()
+
+  theta <- matrix(c(theta[1], theta[2]), ncol = 2)
+
+  current <- list(R=df_Rt$Rt, theta=theta)
+
+  if(is_negative_binomial) {
+
+    kappa <- fit$draws("kappa", format="df") %>%
+      as.data.frame() %>%
+      dplyr::select(-c(.iteration, .chain, .draw))
+    kappa <- kappa[nrow(kappa), ] %>%
+      unlist() %>%
+      unname()
+    current$kappa <- kappa
+  }
+
+  current
+}
+
+stan_metropolis <- function(
+    step_size,
+    df,
+    current_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay,
+    stan_model,
+    n_iterations) {
+
+  tmp <- prepare_stan_data_and_init(
+    df,
+    current_values,
+    priors,
+    is_negative_binomial,
+    is_rw_prior,
+    serial_parameters,
+    serial_max,
+    is_gamma_delay)
+
+  data_stan <- tmp$data
+  init_fn <- tmp$init
+
+  fit <- stan_model$sample(
+    data=data_stan,
+    init = init_fn,
+    iter_warmup = 1,
+    iter_sampling = n_iterations,
+    refresh = 0,
+    show_messages = FALSE,
+    show_exceptions = FALSE,
+    step_size = step_size,
+    chains=1)
+
+  new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial)
+
+  list(current=new_parameter_values)
 }
 
 
@@ -569,7 +687,10 @@ mcmc_single <- function(
   initial_sigma=NULL,
   is_negative_binomial=FALSE,
   is_gamma_delay=TRUE,
-  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE) {
+  serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
+  use_stan_sampling=FALSE,
+  n_stan_iterations=10,
+  n_stan_warmup=10) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -700,36 +821,72 @@ mcmc_single <- function(
       current$sigma <- sigma_current
 
     # just runs model for one iteration to give access to log_p
-    model <- stan_initialisation(
-      df_temp %>%
-        dplyr::rename(cases_true=cases_estimated),
-      current,
-      priors,
-      is_negative_binomial,
-      is_rw_prior,
-      serial_parameters,
-      serial_max,
-      is_gamma_delay,
-      stan_model)
+    if(!use_stan_sampling)
+      model <- stan_initialisation(
+        df_temp %>%
+          dplyr::rename(cases_true=cases_estimated),
+        current,
+        priors,
+        is_negative_binomial,
+        is_rw_prior,
+        serial_parameters,
+        serial_max,
+        is_gamma_delay,
+        stan_model)
 
 
     if(i == 1 & !maximise) { # setup parameters for adaptive covariance MCMC
 
-      mu <- model$unconstrain_variables(current)
-      omega <- diag(1.0, nrow = length(mu), ncol = length(mu))
-      log_lambda <- 0
-      eta <- 0.6 # standard value used in adaptive covariance
+      if(!use_stan_sampling) {
+        mu <- model$unconstrain_variables(current)
+        omega <- diag(1.0, nrow = length(mu), ncol = length(mu))
+        log_lambda <- 0
+        eta <- 0.6 # standard value used in adaptive covariance
+      } else {
+        print("Running preliminary iterations to calibrate MCMC step size...")
+
+        step_size <- get_step_size(df_temp %>%
+                        dplyr::rename(cases_true=cases_estimated),
+                      current,
+                      priors,
+                      is_negative_binomial,
+                      is_rw_prior,
+                      serial_parameters,
+                      serial_max,
+                      is_gamma_delay,
+                      stan_model,
+                      n_warmup = n_stan_warmup)
+      }
     }
 
     if(!maximise) { # MCMC
 
-      res <- metropolis_step_Rt_reporting_overdispersion(
-        current, model,
-        mu, omega, log_lambda,
-        eta, i)
-      mu <- res$mu
-      omega <- res$omega
-      log_lambda <- res$log_lambda
+      if(!use_stan_sampling) { # adaptive MCMC
+
+        res <- metropolis_step_Rt_reporting_overdispersion(
+          current, model,
+          mu, omega, log_lambda,
+          eta, i)
+        mu <- res$mu
+        omega <- res$omega
+        log_lambda <- res$log_lambda
+
+      } else{ # stan
+
+        res <- stan_metropolis(step_size,
+                               df_temp %>%
+                                 dplyr::rename(cases_true=cases_estimated),
+                               current,
+                               priors,
+                               is_negative_binomial,
+                               is_rw_prior,
+                               serial_parameters,
+                               serial_max,
+                               is_gamma_delay,
+                               stan_model,
+                               n_iterations = n_stan_iterations)
+
+      }
 
     } else {
 
@@ -739,6 +896,7 @@ mcmc_single <- function(
     }
 
     current <- res$current
+    print(current)
     overdispersion_current <- current$kappa
     sigma_current <- current$sigma
 

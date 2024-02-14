@@ -292,7 +292,7 @@ stan_model <- cmdstanr::cmdstan_model("../src/stan/conditional_renewal.stan",
                                       compile_model_methods=TRUE,
                                       force_recompile=TRUE)
 options(cmdstanr_warn_inits = FALSE)
-opt <- mcmc_single(5,
+opt <- mcmc_single(1,
   snapshot_with_Rt_index_df,
   priors,
   s_params,
@@ -320,18 +320,22 @@ new_init_Rt <- res$Rt %>%
   left_join(snapshot_with_Rt_index_df) %>% 
   group_by(Rt_index) %>% 
   summarise(Rt=last(Rt))
+initial_cases <- res$cases %>% group_by(time_onset) %>% summarise(cases_true=last(cases_true))
 test <- mcmc_single(
-  100,
+  200,
   snapshot_with_Rt_index_df,
   priors,
   s_params,
-  initial_cases_true=res$cases %>% group_by(time_onset) %>% summarise(cases_true=last(cases_true)),
+  initial_cases_true=initial_cases,
   initial_reporting_parameters=new_init_reporting,
   initial_Rt=new_init_Rt,
-  stan_model,
+  stan_model=stan_model,
   initial_overdispersion = initial_overdispersion,
   is_negative_binomial = TRUE,
-  initial_sigma=1
+  initial_sigma=1,
+  use_stan_sampling = TRUE,
+  n_stan_iterations = 3,
+  n_stan_warmup = 10
 )
 res <- test
 b <- test$Rt
