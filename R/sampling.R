@@ -326,12 +326,27 @@ prepare_stan_data_and_init <- function(
 
     current_value_overdispersion <- current_values$kappa
 
-    init_fn <- function() {
-      list(
-        R=current_values_R,
-        theta=theta,
-        kappa=as.array(c(current_value_overdispersion))
-      )
+    if(!is_rw_prior) {
+
+      init_fn <- function() {
+        list(
+          R=current_values_R,
+          theta=theta,
+          kappa=as.array(c(current_value_overdispersion))
+        )
+      }
+
+    } else {
+
+      init_fn <- function() {
+        list(
+          R=current_values_R,
+          theta=theta,
+          kappa=as.array(c(current_value_overdispersion)),
+          sigma=as.array(c(current_values$sigma))
+        )
+      }
+
     }
 
   } else {
@@ -343,6 +358,22 @@ prepare_stan_data_and_init <- function(
         R=current_values_R,
         theta=theta
       )
+    }
+
+    if(is_rw_prior) {
+
+      {
+
+        init_fn <- function() {
+          list(
+            R=current_values_R,
+            theta=theta,
+            sigma=as.array(c(current_values$sigma))
+          )
+        }
+
+      }
+
     }
 
   }
@@ -467,7 +498,7 @@ get_step_size <- function(
   step_size
 }
 
-extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
+extract_and_sort_stan <- function(fit, df, is_negative_binomial, is_rw_Rt_prior) {
 
   Rs <- fit$draws("R", format="df") %>%
     as.data.frame() %>%
@@ -481,15 +512,16 @@ extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
     Rt_index=seq_along(Rt)
   )
 
-  # TODO handle multiple theta case
   theta <- fit$draws("theta", format="df") %>%
     as.data.frame() %>%
     dplyr::select(-c(.iteration, .chain, .draw))
-  theta <- theta[nrow(theta), ] %>%
+  nrows <- nrow(theta)
+  theta <- theta[nrows, ] %>%
     unlist() %>%
     unname()
+  n_regimes <- length(theta) / 2
 
-  theta <- matrix(c(theta[1], theta[2]), ncol = 2)
+  theta <- matrix(c(theta[1:n_regimes], theta[(n_regimes + 1):length(theta)]), ncol = 2)
 
   current <- list(R=df_Rt$Rt, theta=theta)
 
@@ -502,6 +534,17 @@ extract_and_sort_stan <- function(fit, df, is_negative_binomial) {
       unlist() %>%
       unname()
     current$kappa <- kappa
+  }
+
+  if(is_rw_Rt_prior) {
+
+    sigma <- fit$draws("sigma", format="df") %>%
+      as.data.frame() %>%
+      dplyr::select(-c(.iteration, .chain, .draw))
+    sigma <- sigma[nrow(sigma), ] %>%
+      unlist() %>%
+      unname()
+    current$sigma <- sigma
   }
 
   current
@@ -544,7 +587,7 @@ stan_metropolis <- function(
     step_size = step_size,
     chains=1)
 
-  new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial)
+  new_parameter_values <- extract_and_sort_stan(fit, df, is_negative_binomial, is_rw_prior)
 
   list(current=new_parameter_values)
 }
@@ -689,8 +732,8 @@ mcmc_single <- function(
   is_gamma_delay=TRUE,
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   use_stan_sampling=FALSE,
-  n_stan_iterations=10,
-  n_stan_warmup=10) {
+  n_stan_iterations=3,
+  n_stan_warmup=5) {
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -828,7 +871,7 @@ mcmc_single <- function(
         current,
         priors,
         is_negative_binomial,
-        is_rw_prior,
+        is_rw_Rt_prior,
         serial_parameters,
         serial_max,
         is_gamma_delay,
@@ -850,7 +893,7 @@ mcmc_single <- function(
                       current,
                       priors,
                       is_negative_binomial,
-                      is_rw_prior,
+                      is_rw_Rt_prior,
                       serial_parameters,
                       serial_max,
                       is_gamma_delay,
@@ -879,7 +922,7 @@ mcmc_single <- function(
                                current,
                                priors,
                                is_negative_binomial,
-                               is_rw_prior,
+                               is_rw_Rt_prior,
                                serial_parameters,
                                serial_max,
                                is_gamma_delay,
@@ -896,7 +939,6 @@ mcmc_single <- function(
     }
 
     current <- res$current
-    print(current)
     overdispersion_current <- current$kappa
     sigma_current <- current$sigma
 
@@ -1099,7 +1141,10 @@ mcmc <- function(
     is_negative_binomial=FALSE,
     is_gamma_delay=TRUE,
     serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
-    is_parallel=FALSE) {
+    is_parallel=FALSE,
+    use_stan_sampling=FALSE,
+    n_stan_iterations=3,
+    n_stan_warmup=5) {
 
   is_either_nb_or_sigma <- is_negative_binomial | !is.null(initial_sigma)
 
@@ -1119,7 +1164,10 @@ mcmc <- function(
                        serial_max,
                        p_gamma_cutoff,
                        maximise,
-                       print_to_screen)
+                       print_to_screen,
+                       use_stan_sampling,
+                       n_stan_iterations,
+                       n_stan_warmup)
 
     res$cases$chain <- 1
     res$Rt$chain <- 1
@@ -1149,7 +1197,10 @@ mcmc <- function(
                       serial_max,
                       p_gamma_cutoff,
                       maximise,
-                      print_to_screen)
+                      print_to_screen,
+                      use_stan_sampling,
+                      n_stan_iterations,
+                      n_stan_warmup)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -1181,7 +1232,10 @@ mcmc <- function(
                            serial_max,
                            p_gamma_cutoff,
                            maximise,
-                           print_to_screen)
+                           print_to_screen,
+                           use_stan_sampling,
+                           n_stan_iterations,
+                           n_stan_warmup)
         list_of_results[[i]] <- res
       }
     }

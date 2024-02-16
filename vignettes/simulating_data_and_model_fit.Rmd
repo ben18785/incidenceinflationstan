@@ -182,6 +182,13 @@ Rt_df_po %>%
   geom_line(data=. %>% filter(type=="actual"), colour="orange") +
   xlab("Onset time")
 ```
+
+To do list:
+
+- find out why first R being estimated by Stan is too high
+- find out why kappa is generally underestimated
+- write tests for functions involved in Stan simulation
+
 # Inference on simulated data with perfect cases -- using Stan model
 ```{r}
 snapshot_with_Rt_index_df <- df
@@ -189,7 +196,7 @@ snapshot_with_Rt_index_df <- df
 initial_cases_true <- df %>% 
   group_by(time_onset) %>% 
   summarise(cases_true=last(cases_reported))
-# initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
+initial_cases_true <- df %>% select(time_onset, cases_true) %>% unique()
 
 initial_Rt <- tribble(~Rt_index, ~Rt,
                       1, 1.0,
@@ -225,6 +232,8 @@ current_values <- list(
   Rt=tibble(Rt=c(1.5, 1.5, 0.5, 1.5, 1.5)),
   theta=matrix(c(10, 3), ncol = 2)
 )
+
+snapshot_with_Rt_index_df$reporting_piece_index[904:length(snapshot_with_Rt_index_df$reporting_piece_index)] <- 2
 tmp <- incidenceinflationstan:::prepare_stan_data_and_init(
     snapshot_with_Rt_index_df,
     current_values,
@@ -233,20 +242,25 @@ tmp <- incidenceinflationstan:::prepare_stan_data_and_init(
     is_rw_prior=FALSE,
     s_params,
     serial_max=40,
-    1,
     is_gamma_delay=TRUE)
 
 data_stan <- tmp$data
 
 model <- stan_model$sample(
     data=data_stan,
-    iter_warmup = 50,
-    iter_sampling = 400,
+    iter_warmup = 5,
+    iter_sampling = 10,
     refresh = 0,
     show_exceptions = FALSE,
     chains=1)
 df_out <- model$draws(format = "data.frame")
-plot(df_out$`R[1]`)
+theta <- model$draws("theta", format="df") %>%
+    as.data.frame() %>% 
+  dplyr::select(-c(.iteration, .chain, .draw))
+n_regimes <- max(snapshot_with_Rt_index_df$reporting_piece_index)
+nrows <- nrow(theta)
+theta <- theta[nrows, ]
+
 ```
 
 

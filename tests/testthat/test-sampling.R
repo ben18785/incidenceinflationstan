@@ -456,8 +456,8 @@ test_that("mcmc produces outputs of correct shape", {
                         colnames(cases_df)))
   expect_equal(min(cases_df$iteration), 1)
   expect_equal(max(cases_df$iteration), niter)
-  expect_equal(min(cases_df$time_onset), min(df$time_onset))
-  expect_equal(max(cases_df$time_onset), max(df$time_onset))
+  expect_equal(min(cases_df$time_onset), min(snapshot_with_Rt_index_df$time_onset))
+  expect_equal(max(cases_df$time_onset), max(snapshot_with_Rt_index_df$time_onset))
   expect_equal(min(cases_df$chain), 1)
   expect_equal(max(cases_df$chain), 1)
 
@@ -501,8 +501,8 @@ test_that("mcmc produces outputs of correct shape", {
                         colnames(cases_df)))
   expect_equal(min(cases_df$iteration), 1)
   expect_equal(max(cases_df$iteration), niter)
-  expect_equal(min(cases_df$time_onset), min(df$time_onset))
-  expect_equal(max(cases_df$time_onset), max(df$time_onset))
+  expect_equal(min(cases_df$time_onset), min(snapshot_with_Rt_index_df$time_onset))
+  expect_equal(max(cases_df$time_onset), max(snapshot_with_Rt_index_df$time_onset))
   expect_equal(min(cases_df$chain), 1)
   expect_equal(max(cases_df$chain), 1)
 
@@ -729,6 +729,7 @@ test_that("prepare_stan_data_and_init works", {
                                 sd_sigma=5),
                  max_cases=5000)
 
+  # without kappa or sigma
   res <- prepare_stan_data_and_init(df,
                       current_values,
                       priors,
@@ -740,42 +741,174 @@ test_that("prepare_stan_data_and_init works", {
   data_stan <- res$data
   expect_equal(data_stan$N, days_total)
   expect_equal(length(data_stan$w), 40)
-  init_fn <- res$init
-  vals <- init_fn()
-  expect_equal(vals$R, current_values$R)
-  expect_equal(vals$theta, current_values$theta)
+  expect_equal(length(data_stan), 24)
 
-  model <- stan_model$sample(
-    data=data_stan,
-    init = init_fn,
-    iter_warmup = 1,
-    iter_sampling = 0,
-    adapt_delta=0.9,
-    refresh = 0,
-    show_messages = FALSE,
-    show_exceptions = FALSE,
-    chains=1)
-  model$init_model_methods()
+  init_values <- res$init()
+  expect_equal(init_values$R, current_values$R)
+  expect_equal(init_values$theta, current_values$theta)
 
-  log_p_1 <- model$log_prob(uncons)
+  # with kappa and/or sigma
+  current_values$kappa <- 1
+  res <- prepare_stan_data_and_init(df,
+                                    current_values,
+                                    priors,
+                                    is_negative_binomial=TRUE,
+                                    is_rw_prior=FALSE,
+                                    serial_parameters=s_params,
+                                    serial_max=40,
+                                    is_gamma_delay=TRUE)
+  data_stan <- res$data
+  expect_equal(data_stan$N, days_total)
+  expect_equal(length(data_stan$w), 40)
+  expect_equal(length(data_stan), 24)
 
-  val <- data_stan$cases_true[length(data_stan$cases_true)]
-  data_stan$cases_true[data_stan$cases_true==val] <- val - 1000
-  # another_val <- data_stan$cases_true[1]
-  # data_stan$cases_true[data_stan$cases_true==another_val] <- val + 10
+  init_values <- res$init()
+  expect_equal(init_values$R, current_values$R)
+  expect_equal(init_values$theta, current_values$theta)
+  expect_equal(init_values$kappa[1], current_values$kappa)
 
-  model <- stan_model$sample(
-    data=data_stan,
-    init = init_fn,
-    iter_warmup = 1,
-    iter_sampling = 0,
-    adapt_delta=0.9,
-    refresh = 0,
-    show_messages = FALSE,
-    show_exceptions = FALSE,
-    chains=1)
-  model$init_model_methods()
-  log_p_2 <- model$log_prob(uncons)
 
+  current_values$sigma <- 2
+  res <- prepare_stan_data_and_init(df,
+                                    current_values,
+                                    priors,
+                                    is_negative_binomial=TRUE,
+                                    is_rw_prior=TRUE,
+                                    serial_parameters=s_params,
+                                    serial_max=40,
+                                    is_gamma_delay=TRUE)
+  data_stan <- res$data
+  expect_equal(data_stan$N, days_total)
+  expect_equal(length(data_stan$w), 40)
+  expect_equal(length(data_stan), 24)
+
+  init_values <- res$init()
+  expect_equal(init_values$R, current_values$R)
+  expect_equal(init_values$theta, current_values$theta)
+  expect_equal(init_values$kappa[1], current_values$kappa)
+  expect_equal(init_values$sigma[1], current_values$sigma)
 })
+
+test_that("check that get_step_size works ok", {
+
+  days_total <- 100
+  r_params <- list(location=10, scale=3)
+  s_params <- list(mean=5, sd=3)
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  Rt_prior <- list(location=1, scale=5, is_gamma=TRUE)
+  kappa <- 10
+  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                           kappa=kappa)
+  Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+  Rt_index_lookup <- dplyr::tibble(
+    time_onset=seq_along(Rt_indices),
+    Rt_index=Rt_indices)
+  df <- df %>%
+    dplyr::left_join(Rt_index_lookup, by = "time_onset") %>%
+    mutate(reporting_piece_index=1)
+
+  current_values <- list(
+    R=c(1.5, 1.5, 0.5, 1.5, 1.5),
+    theta=matrix(c(10, 3), ncol = 2)
+  )
+  priors <- list(Rt=Rt_prior,
+                 reporting=list(mean_mu=5,
+                                mean_sigma=10,
+                                sd_mu=3,
+                                sd_sigma=5),
+                 max_cases=5000)
+
+  step_size <- get_step_size(df=df,
+                             current_values=current_values,
+                             priors=priors,
+                             is_negative_binomial=FALSE,
+                             is_rw_prior=FALSE,
+                             serial_parameters=s_params,
+                             serial_max=40,
+                             is_gamma_delay=TRUE,
+                             stan_model=stan_model,
+                             n_warmup = 2)
+  # really I am just testing that this runs
+  expect_true(step_size > 0)
+})
+
+test_that("stan_metropolis runs and extracting works" , {
+
+  days_total <- 100
+  r_params <- list(location=10, scale=3)
+  s_params <- list(mean=5, sd=3)
+  v_Rt <- c(rep(1.5, 40), rep(0.4, 20), rep(1.5, 40))
+  Rt_function <- stats::approxfun(1:days_total, v_Rt)
+  Rt_prior <- list(location=1, scale=5, is_gamma=TRUE)
+  kappa <- 10
+  df <- generate_snapshots(days_total, Rt_function, s_params, r_params,
+                           kappa=kappa)
+  Rt_indices <- unlist(purrr::map(seq(1, 5, 1), ~rep(., 20)))
+  Rt_index_lookup <- dplyr::tibble(
+    time_onset=seq_along(Rt_indices),
+    Rt_index=Rt_indices)
+  df <- df %>%
+    dplyr::left_join(Rt_index_lookup, by = "time_onset") %>%
+    mutate(reporting_piece_index=1)
+
+  current_values <- list(
+    R=c(1.5, 1.5, 0.5, 1.5, 1.5),
+    theta=matrix(c(10, 3), ncol = 2)
+  )
+  priors <- list(Rt=Rt_prior,
+                 reporting=list(mean_mu=5,
+                                mean_sigma=10,
+                                sd_mu=3,
+                                sd_sigma=5),
+                 max_cases=5000)
+
+  res <- stan_metropolis(0.25, df=df,
+                             current_values=current_values,
+                             priors=priors,
+                             is_negative_binomial=FALSE,
+                             is_rw_prior=FALSE,
+                             serial_parameters=s_params,
+                             serial_max=40,
+                             is_gamma_delay=TRUE,
+                             stan_model=stan_model,
+                             n_iterations = 2)
+  expect_equal(length(res$current$R), 5)
+  expect_equal(length(res$current$theta), 2)
+
+  # with kappa
+  current_values$kappa <- 1
+  res <- stan_metropolis(0.25, df=df,
+                         current_values=current_values,
+                         priors=priors,
+                         is_negative_binomial=TRUE,
+                         is_rw_prior=FALSE,
+                         serial_parameters=s_params,
+                         serial_max=40,
+                         is_gamma_delay=TRUE,
+                         stan_model=stan_model,
+                         n_iterations = 3)
+  expect_equal(length(res$current$R), 5)
+  expect_equal(length(res$current$theta), 2)
+  expect_equal(length(res$current$kappa), 1)
+
+  # with sigma
+  current_values$sigma <- 2
+  priors$Rt$is_gamma <- FALSE
+  res <- stan_metropolis(0.25, df=df,
+                         current_values=current_values,
+                         priors=priors,
+                         is_negative_binomial=TRUE,
+                         is_rw_prior=TRUE,
+                         serial_parameters=s_params,
+                         serial_max=40,
+                         is_gamma_delay=TRUE,
+                         stan_model=stan_model,
+                         n_iterations = 3)
+  expect_equal(length(res$current$R), 5)
+  expect_equal(length(res$current$theta), 2)
+  expect_equal(length(res$current$kappa), 1)
+  expect_equal(length(res$current$sigma), 1)
+})
+
 
