@@ -893,7 +893,7 @@ mcmc_single <- function(
       } else {
         print("Running preliminary iterations to calibrate MCMC step size...")
 
-        if(!is.null(step_size))
+        if(is.null(step_size))
           step_size <- get_step_size(df_temp %>%
                         dplyr::rename(cases_true=cases_estimated),
                       current,
