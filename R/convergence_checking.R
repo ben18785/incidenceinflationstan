@@ -44,7 +44,7 @@ convert_results_to_posterior_format <- function(results) {
     tidyr::pivot_wider(
       id_cols = c(.chain, .iteration, .draw),
       names_from=reporting_piece_index,
-      values_from = c(mean, sd))
+      values_from = c(location, scale))
 
   is_negative_binomial <- FALSE
   if("overdispersion" %in% names(results)) {
