@@ -48,7 +48,7 @@ convert_results_to_posterior_format <- function(results) {
 
   is_negative_binomial <- FALSE
   if("other" %in% names(results)) {
-    overdispersion_df <- results$overdispersion
+    overdispersion_df <- results$other
     overdispersion_df <- overdispersion_df %>%
       dplyr::rename(
         .chain=chain,
