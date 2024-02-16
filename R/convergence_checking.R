@@ -47,7 +47,7 @@ convert_results_to_posterior_format <- function(results) {
       values_from = c(location, scale))
 
   is_negative_binomial <- FALSE
-  if("overdispersion" %in% names(results)) {
+  if("other" %in% names(results)) {
     overdispersion_df <- results$overdispersion
     overdispersion_df <- overdispersion_df %>%
       dplyr::rename(
@@ -66,6 +66,6 @@ convert_results_to_posterior_format <- function(results) {
   )
 
   if(is_negative_binomial)
-    list_results$overdispersion <- overdispersion_df
+    list_results$other <- overdispersion_df
   list_results
 }
