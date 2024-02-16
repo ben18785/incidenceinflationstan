@@ -733,7 +733,11 @@ mcmc_single <- function(
   serial_max=40, p_gamma_cutoff=0.99, maximise=FALSE, print_to_screen=TRUE,
   use_stan_sampling=FALSE,
   n_stan_iterations=3,
-  n_stan_warmup=5) {
+  n_stan_warmup=5,
+  step_size=NULL) {
+
+  if(use_stan_sampling & maximise)
+    stop("Cannot use Stan sampling and optimisation!")
 
   cnames <- colnames(snapshot_with_Rt_index_df)
   expected_names <- c("time_onset", "time_reported",
@@ -864,7 +868,7 @@ mcmc_single <- function(
       current$sigma <- sigma_current
 
     # just runs model for one iteration to give access to log_p
-    if(!use_stan_sampling)
+    if(!use_stan_sampling) {
       model <- stan_initialisation(
         df_temp %>%
           dplyr::rename(cases_true=cases_estimated),
@@ -876,6 +880,7 @@ mcmc_single <- function(
         serial_max,
         is_gamma_delay,
         stan_model)
+    }
 
 
     if(i == 1 & !maximise) { # setup parameters for adaptive covariance MCMC
@@ -888,7 +893,8 @@ mcmc_single <- function(
       } else {
         print("Running preliminary iterations to calibrate MCMC step size...")
 
-        step_size <- get_step_size(df_temp %>%
+        if(!is.null(step_size))
+          step_size <- get_step_size(df_temp %>%
                         dplyr::rename(cases_true=cases_estimated),
                       current,
                       priors,
@@ -1144,7 +1150,8 @@ mcmc <- function(
     is_parallel=FALSE,
     use_stan_sampling=FALSE,
     n_stan_iterations=3,
-    n_stan_warmup=5) {
+    n_stan_warmup=5,
+    step_size=NULL) {
 
   is_either_nb_or_sigma <- is_negative_binomial | !is.null(initial_sigma)
 
@@ -1167,7 +1174,8 @@ mcmc <- function(
                        print_to_screen,
                        use_stan_sampling,
                        n_stan_iterations,
-                       n_stan_warmup)
+                       n_stan_warmup,
+                       step_size)
 
     res$cases$chain <- 1
     res$Rt$chain <- 1
@@ -1200,7 +1208,8 @@ mcmc <- function(
                       print_to_screen,
                       use_stan_sampling,
                       n_stan_iterations,
-                      n_stan_warmup)
+                      n_stan_warmup,
+                      step_size)
         }
 
         list_of_results <- foreach::foreach(i=1:nchains, .export = "mcmc_single") %dopar% {
@@ -1235,7 +1244,8 @@ mcmc <- function(
                            print_to_screen,
                            use_stan_sampling,
                            n_stan_iterations,
-                           n_stan_warmup)
+                           n_stan_warmup,
+                           step_size)
         list_of_results[[i]] <- res
       }
     }
